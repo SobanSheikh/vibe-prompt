@@ -1,0 +1,146 @@
+{
+  "name": "codex-voice",
+  "displayName": "Codex Voice",
+  "description": "Local streaming voice dictation alongside Codex in VS Code.",
+  "version": "0.4.1",
+  "publisher": "sobansheikh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SobanSheikh/codex_voice.git"
+  },
+  "files": [
+    "out/**",
+    "media/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "codex",
+    "voice",
+    "dictation",
+    "whisper",
+    "speech-to-text"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onView:codexVoice.transcript",
+    "onCommand:codexVoice.toggleRecording"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexVoice.toggleRecording",
+        "title": "Codex Voice: Start or Stop Recording",
+        "icon": "$(mic)"
+      },
+      {
+        "command": "codexVoice.startRecording",
+        "title": "Codex Voice: Start Recording"
+      },
+      {
+        "command": "codexVoice.stopRecording",
+        "title": "Codex Voice: Stop and Transcribe"
+      },
+      {
+        "command": "codexVoice.cancelRecording",
+        "title": "Codex Voice: Cancel Recording"
+      },
+      {
+        "command": "codexVoice.copyTranscript",
+        "title": "Codex Voice: Copy Transcript"
+      },
+      {
+        "command": "codexVoice.clearTranscript",
+        "title": "Codex Voice: Clear Transcript"
+      },
+      {
+        "command": "codexVoice.openTranscript",
+        "title": "Codex Voice: Open Transcript"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codexVoice.toggleRecording",
+        "key": "ctrl+alt+space",
+        "mac": "cmd+alt+space"
+      },
+      {
+        "command": "codexVoice.cancelRecording",
+        "key": "escape",
+        "when": "codexVoice.recording"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "codexVoicePanel",
+          "title": "Codex Voice",
+          "icon": "media/microphone.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexVoicePanel": [
+        {
+          "type": "webview",
+          "id": "codexVoice.transcript",
+          "name": "Live Transcript"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Codex Voice",
+      "properties": {
+        "codexVoice.whisperBinaryPath": {
+          "type": "string",
+          "default": "whisper-cli",
+          "description": "Path to the whisper.cpp command-line executable."
+        },
+        "codexVoice.modelPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a local whisper.cpp GGML model file."
+        },
+        "codexVoice.language": {
+          "type": "string",
+          "default": "en",
+          "description": "Language code passed to whisper.cpp, or 'auto' for detection."
+        },
+        "codexVoice.audioInput": {
+          "type": "string",
+          "default": "default",
+          "description": "FFmpeg audio input device. Use 'default' for the system microphone on Linux."
+        },
+        "codexVoice.previewIntervalMs": {
+          "type": "number",
+          "default": 3500,
+          "minimum": 2000,
+          "maximum": 15000,
+          "description": "Interval between rolling transcript preview updates, in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc --noEmit -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}
