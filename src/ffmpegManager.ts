@@ -37,8 +37,8 @@ export class FfmpegManager {
       if (versionResult.code !== 0) {
         return evaluateFfmpeg(process.platform, versionResult, { code: null, output: "" });
       }
-      const demuxerResult = await run(binaryPath, ["-hide_banner", "-demuxers"]);
-      return evaluateFfmpeg(process.platform, versionResult, demuxerResult);
+      const deviceResult = await run(binaryPath, ["-hide_banner", "-devices"]);
+      return evaluateFfmpeg(process.platform, versionResult, deviceResult);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       return {
@@ -54,7 +54,7 @@ export class FfmpegManager {
 export function evaluateFfmpeg(
   platform: NodeJS.Platform,
   versionResult: ProcessResult,
-  demuxerResult: ProcessResult,
+  deviceResult: ProcessResult,
 ): FfmpegStatus {
   if (versionResult.code !== 0) {
     return { ready: false, message: "FFmpeg could not be started successfully." };
@@ -72,7 +72,7 @@ export function evaluateFfmpeg(
   }
 
   const backendPattern = new RegExp(`^\\s*D\\s+${backend}\\s`, "m");
-  if (demuxerResult.code !== 0 || !backendPattern.test(demuxerResult.output)) {
+  if (deviceResult.code !== 0 || !backendPattern.test(deviceResult.output)) {
     return {
       ready: false,
       message: `This FFmpeg installation does not include the '${backend}' audio capture backend.`,

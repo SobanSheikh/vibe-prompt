@@ -26,6 +26,10 @@ export function runtimeInstallMethod(platform: NodeJS.Platform, arch: string): R
   return RUNTIMES[`${platform}-${arch}`] ? "archive" : "unsupported";
 }
 
+export function runtimeArchiveDownloadName(asset: Pick<RuntimeAsset, "archiveName" | "archiveType">): string {
+  return `${asset.archiveName}.download.${asset.archiveType}`;
+}
+
 const RUNTIMES: Record<string, RuntimeAsset> = {
   "linux-x64": {
     url: "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz",
@@ -88,7 +92,7 @@ export class RuntimeManager implements vscode.Disposable {
     }
 
     await mkdir(root, { recursive: true });
-    const archivePath = path.join(root, `${asset.archiveName}.download`);
+    const archivePath = path.join(root, runtimeArchiveDownloadName(asset));
     await rm(archivePath, { force: true });
     await rm(path.dirname(binaryPath), { recursive: true, force: true });
 

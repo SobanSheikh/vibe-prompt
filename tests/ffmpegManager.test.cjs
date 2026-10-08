@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { evaluateFfmpeg } = require("../out/ffmpegManager");
 
-test("accepts Linux FFmpeg with PulseAudio support", () => {
+test("accepts Linux FFmpeg with a PulseAudio input device", () => {
   const status = evaluateFfmpeg(
     "linux",
     { code: 0, output: "ffmpeg version 7.1 Copyright" },
@@ -11,7 +11,7 @@ test("accepts Linux FFmpeg with PulseAudio support", () => {
   assert.deepEqual(status, { ready: true, message: "FFmpeg 7.1", version: "7.1" });
 });
 
-test("accepts Windows FFmpeg with DirectShow support", () => {
+test("accepts Windows FFmpeg with a DirectShow input device", () => {
   const status = evaluateFfmpeg(
     "win32",
     { code: 0, output: "ffmpeg version 7.1 Copyright" },
@@ -20,7 +20,7 @@ test("accepts Windows FFmpeg with DirectShow support", () => {
   assert.equal(status.ready, true);
 });
 
-test("accepts macOS FFmpeg with AVFoundation support", () => {
+test("accepts macOS FFmpeg with an AVFoundation input device", () => {
   const status = evaluateFfmpeg(
     "darwin",
     { code: 0, output: "ffmpeg version 7.1 Copyright" },
