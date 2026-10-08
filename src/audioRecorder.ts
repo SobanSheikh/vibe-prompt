@@ -3,6 +3,11 @@ import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 const SAMPLE_RATE = 16_000;
 const STDERR_LIMIT = 8_000;
 
+export interface AudioInput {
+  label: string;
+  value: string;
+}
+
 export class AudioRecorder {
   private process: ChildProcessWithoutNullStreams | undefined;
   private starting = false;
@@ -30,9 +35,15 @@ export class AudioRecorder {
     this.stderr = "";
     let resolvedDevice: string;
     try {
-      resolvedDevice = process.platform === "win32" && (!device || device === "default")
-        ? await this.defaultWindowsInput(ffmpegPath)
-        : device;
+      if (!device || device === "default") {
+        resolvedDevice = process.platform === "win32"
+          ? await this.defaultWindowsInput(ffmpegPath)
+          : process.platform === "darwin"
+            ? await this.defaultMacInput(ffmpegPath)
+            : "default";
+      } else {
+        resolvedDevice = device;
+      }
     } finally {
       if (generation === this.startGeneration) this.starting = false;
     }
@@ -122,9 +133,12 @@ export class AudioRecorder {
     this.process = undefined;
   }
 
-  public async listAudioInputs(ffmpegPath = "ffmpeg"): Promise<string[]> {
-    if (process.platform !== "win32") return ["default"];
-    return this.windowsAudioInputs(ffmpegPath);
+  public async listAudioInputs(ffmpegPath = "ffmpeg"): Promise<AudioInput[]> {
+    if (process.platform === "win32") {
+      return (await this.windowsAudioInputs(ffmpegPath)).map((value) => ({ label: value, value }));
+    }
+    if (process.platform === "darwin") return this.macAudioInputs(ffmpegPath);
+    return [{ label: "System default", value: "default" }];
   }
 
   private async defaultWindowsInput(ffmpegPath: string): Promise<string> {
@@ -133,6 +147,39 @@ export class AudioRecorder {
       throw new Error("No Windows microphone was found. Check microphone permissions and FFmpeg installation.");
     }
     return devices[0];
+  }
+
+  private async defaultMacInput(ffmpegPath: string): Promise<string> {
+    const devices = await this.macAudioInputs(ffmpegPath);
+    if (devices.length === 0) {
+      throw new Error("No macOS microphone was found. Check microphone permissions and FFmpeg installation.");
+    }
+    return devices[0].value;
+  }
+
+  private macAudioInputs(ffmpegPath: string): Promise<AudioInput[]> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(ffmpegPath, ["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""], {
+        windowsHide: true,
+      });
+      let stderr = "";
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill("SIGKILL");
+        reject(new Error("Timed out while discovering macOS microphones."));
+      }, 10_000);
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+      child.once("error", (error) => finish(() => reject(new Error(`Could not enumerate macOS audio devices: ${error.message}`))));
+      child.once("exit", () => finish(() => resolve(parseMacAudioInputs(stderr))));
+    });
   }
 
   private windowsAudioInputs(ffmpegPath: string): Promise<string[]> {
@@ -193,6 +240,20 @@ export function parseWindowsAudioInputs(stderr: string): string[] {
   const pattern = /"([^"]+)"\s+\(audio\)/g;
   for (const match of stderr.matchAll(pattern)) {
     if (!devices.includes(match[1])) devices.push(match[1]);
+  }
+  return devices;
+}
+
+export function parseMacAudioInputs(stderr: string): AudioInput[] {
+  const marker = /AVFoundation audio devices:/i.exec(stderr);
+  if (!marker) return [];
+  const devices: AudioInput[] = [];
+  const pattern = /\[(\d+)\]\s+([^\r\n]+)/g;
+  for (const match of stderr.slice(marker.index + marker[0].length).matchAll(pattern)) {
+    const label = match[2].replace(/^\[[^\]]+\]\s*/, "").trim();
+    if (!devices.some((device) => device.value === `:${match[1]}`)) {
+      devices.push({ label, value: `:${match[1]}` });
+    }
   }
   return devices;
 }

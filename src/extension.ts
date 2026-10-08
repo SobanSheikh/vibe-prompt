@@ -228,21 +228,24 @@ class VoiceController implements vscode.Disposable {
       if (devices.length === 0) {
         throw new Error("No microphone was found. Check operating-system microphone permissions and FFmpeg installation.");
       }
-      if (process.platform !== "win32") {
+      if (process.platform === "linux") {
         void vscode.window.showInformationMessage("Codex Voice uses the system default Linux audio input.");
         return;
       }
       const current = configuration.get<string>("audioInput", "default");
-      const ordered = [...devices].sort((left, right) => Number(right === current) - Number(left === current));
-      const selected = await vscode.window.showQuickPick(ordered, {
+      const ordered = [...devices].sort((left, right) => Number(right.value === current) - Number(left.value === current));
+      const selected = await vscode.window.showQuickPick(
+        ordered.map((device) => ({ label: device.label, description: device.value, value: device.value })),
+        {
         placeHolder: "Select the microphone used by Codex Voice",
         title: "Codex Voice: Audio Input",
-      });
+        },
+      );
       if (!selected) return;
       await vscode.workspace
         .getConfiguration("codexVoice")
-        .update("audioInput", selected, vscode.ConfigurationTarget.Global);
-      void vscode.window.showInformationMessage(`Codex Voice will use: ${selected}`);
+        .update("audioInput", selected.value, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(`Codex Voice will use: ${selected.label}`);
     } catch (error) {
       void vscode.window.showErrorMessage(messageFrom(error));
     }

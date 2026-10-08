@@ -189,7 +189,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       <div class="dependency-actions"><button id="checkFfmpeg" class="primary">Check again</button><button id="openFfmpegHelp">Installation guide</button></div>
     </div>
     <div id="runtimeSetup" class="model setup-dependency">
-      <div class="model-head"><span>Whisper runtime</span><span>10 MB</span></div>
+      <div class="model-head"><span>Whisper runtime</span><span>Local</span></div>
       <p id="runtimeDescription">Runs speech recognition locally</p>
       <button id="installRuntime" class="primary">Install runtime</button>
       <div id="runtimeDownload" class="download"><progress id="runtimeProgress" max="100" value="0"></progress><span id="runtimeProgressText"></span><button id="cancelRuntimeDownload">Cancel</button></div>
@@ -299,7 +299,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       installRuntime.disabled = state.installingRuntime || Boolean(state.downloadingModelId);
       installRuntime.textContent = state.installingRuntime ? 'Installing...' : state.runtimeInstallSupported ? 'Install runtime' : 'Unsupported platform';
       document.getElementById('runtimeDescription').textContent = state.runtimeInstallSupported
-        ? 'Runs speech recognition locally'
+        ? 'Runs speech recognition locally; macOS builds current upstream source on this machine'
         : 'Automatic setup is not available for this platform yet';
       const runtimeDownload = document.getElementById('runtimeDownload');
       runtimeDownload.classList.toggle('visible', Boolean(state.installingRuntime));

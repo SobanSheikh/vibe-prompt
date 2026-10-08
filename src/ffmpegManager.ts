@@ -60,7 +60,13 @@ export function evaluateFfmpeg(
     return { ready: false, message: "FFmpeg could not be started successfully." };
   }
 
-  const backend = platform === "win32" ? "dshow" : platform === "linux" ? "pulse" : undefined;
+  const backend = platform === "win32"
+    ? "dshow"
+    : platform === "linux"
+      ? "pulse"
+      : platform === "darwin"
+        ? "avfoundation"
+        : undefined;
   if (!backend) {
     return { ready: false, message: "This operating system is not supported by the current desktop release." };
   }

@@ -12,7 +12,8 @@ The production target is **VS Code Desktop on Windows and Linux**:
 | Linux ARM64 | Supported |
 | Windows x64 | Supported |
 | Windows ARM64 | Supported |
-| macOS | Not yet supported |
+| macOS Apple Silicon | Implemented; hardware validation pending |
+| macOS Intel | Implemented; hardware validation pending |
 | VS Code Web (`vscode.dev`, `github.dev`) | Not supported |
 
 Codex Voice is a local UI extension. Microphone capture and transcription run on the machine hosting the VS Code interface, including when the workspace is opened through WSL, Remote SSH, or a Dev Container. The local VS Code host, not the remote workspace, determines which runtime package and audio capture implementation are used.
@@ -21,14 +22,14 @@ Codex Voice is a local UI extension. Microphone capture and transcription run on
 
 - VS Code 1.90 or newer
 - FFmpeg available on `PATH`
-- Linux or Windows on x64 or ARM64
+- Linux, Windows, or macOS on x64 or ARM64
 
 Audio and transcription stay on the local machine. The extension does not read workspace files or send audio to an external service.
 
 ## Setup
 
 1. Install FFmpeg. Codex Voice verifies the executable and required audio backend during setup. If FFmpeg is not on `PATH`, configure `Codex Voice: FFmpeg Path`.
-2. Open the **Codex Voice** panel and install the local whisper.cpp runtime.
+2. Open the **Codex Voice** panel and install the local whisper.cpp runtime. Linux and Windows use checksum-verified official archives. macOS shallow-clones whisper.cpp's latest default branch and builds it locally; this requires Git, CMake, and Xcode Command Line Tools.
 3. Choose Tiny English, Base English, or Small English. The extension downloads the model to its private storage, verifies its size and SHA-256, and configures it automatically.
 
 Base English is the recommended default. Model Path remains available in advanced settings for an existing or custom whisper.cpp model.
@@ -36,6 +37,8 @@ Base English is the recommended default. Model Path remains available in advance
 On Ubuntu, the default audio input uses PulseAudio/PipeWire through FFmpeg's `default` input. Change `Codex Voice: Audio Input` if the microphone has a different source name.
 
 On Windows, `default` discovers DirectShow microphones and initially uses the first available input. Use the microphone button in the transcript toolbar or run **Codex Voice: Select Microphone** to choose a different device.
+
+On macOS, `default` discovers AVFoundation microphones and initially uses the first audio input. Use the microphone button to select another input. macOS may ask for microphone access the first time FFmpeg records; allow access for VS Code and restart recording.
 
 ## Use
 
@@ -65,6 +68,8 @@ npm run package:linux-x64
 npm run package:linux-arm64
 npm run package:win32-x64
 npm run package:win32-arm64
+npm run package:darwin-x64
+npm run package:darwin-arm64
 ```
 
 The platform-targeted commands produce Marketplace-compatible VSIX packages for the supported desktop architectures.
