@@ -2,15 +2,19 @@ import { access, watch, FSWatcher } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
 import { AudioRecorder } from "./audioRecorder";
+import { FfmpegManager } from "./ffmpegManager";
 import { ModelManager, WHISPER_MODELS } from "./modelManager";
+import { previewAudio, shouldApplyPreview } from "./previewPolicy";
 import { RuntimeManager } from "./runtimeManager";
+import { SessionState } from "./sessionState";
+import type { SessionPhase } from "./sessionState";
 import { TranscriptViewProvider } from "./transcriptView";
+import type { TranscriptState } from "./transcriptView";
 import { WhisperTranscriber } from "./whisperTranscriber";
 
 const SAMPLE_RATE = 16_000;
 const BYTES_PER_SAMPLE = 2;
 const MAX_RECORDING_MS = 10 * 60 * 1_000;
-const MIN_PREVIEW_BYTES = SAMPLE_RATE * BYTES_PER_SAMPLE;
 
 class VoiceController implements vscode.Disposable {
   private readonly view: TranscriptViewProvider;
@@ -18,12 +22,12 @@ class VoiceController implements vscode.Disposable {
   private readonly modelManager: ModelManager;
   private readonly runtimeManager: RuntimeManager;
   private readonly recorder: AudioRecorder;
+  private readonly ffmpegManager = new FfmpegManager();
+  private readonly session = new SessionState();
   private chunks: Buffer[] = [];
-  private previewOffset = 0;
   private previewText = "";
   private startedAt = 0;
   private generation = 0;
-  private transcribing = false;
   private modelDownloadGeneration = 0;
   private modelDownloadRunning = false;
   private previewRunning = false;
@@ -57,6 +61,11 @@ class VoiceController implements vscode.Disposable {
       closeModelManager: () => this.view.update({ manageModels: false }),
       switchModel: (modelId) => this.switchModel(modelId),
       removeModel: (modelId) => this.removeModel(modelId),
+      selectAudioInput: () => this.selectAudioInput(),
+      checkFfmpeg: () => this.refreshSetupState(false, true),
+      openFfmpegHelp: async () => {
+        await vscode.env.openExternal(vscode.Uri.parse("https://ffmpeg.org/download.html"));
+      },
     });
     void this.refreshSetupState();
   }
@@ -65,7 +74,7 @@ class VoiceController implements vscode.Disposable {
     return [
       vscode.window.registerWebviewViewProvider(TranscriptViewProvider.viewType, this.view),
       vscode.commands.registerCommand("codexVoice.toggleRecording", () =>
-        this.recorder.isRecording ? this.stop() : this.start(),
+        this.session.phase === "recording" ? this.stop() : this.session.isBusy ? this.cancel() : this.start(),
       ),
       vscode.commands.registerCommand("codexVoice.startRecording", () => this.start()),
       vscode.commands.registerCommand("codexVoice.stopRecording", () => this.stop()),
@@ -73,8 +82,13 @@ class VoiceController implements vscode.Disposable {
       vscode.commands.registerCommand("codexVoice.copyTranscript", () => this.copy()),
       vscode.commands.registerCommand("codexVoice.clearTranscript", () => this.clear()),
       vscode.commands.registerCommand("codexVoice.openTranscript", () => this.reveal()),
+      vscode.commands.registerCommand("codexVoice.selectAudioInput", () => this.selectAudioInput()),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("codexVoice.modelPath") || event.affectsConfiguration("codexVoice.whisperBinaryPath")) {
+        if (
+          event.affectsConfiguration("codexVoice.modelPath")
+          || event.affectsConfiguration("codexVoice.whisperBinaryPath")
+          || event.affectsConfiguration("codexVoice.ffmpegPath")
+        ) {
           void this.refreshSetupState(true);
         }
       }),
@@ -82,83 +96,104 @@ class VoiceController implements vscode.Disposable {
   }
 
   public async start(): Promise<void> {
-    if (this.recorder.isRecording || this.transcribing) {
+    if (!this.session.canStart) return;
+    const generation = ++this.generation;
+    this.setPhase("starting");
+    await vscode.commands.executeCommand("setContext", "codexVoice.recording", true);
+    if (generation !== this.generation || this.session.phase !== "starting") return;
+
+    const configuration = vscode.workspace.getConfiguration("codexVoice");
+    const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
+    const ffmpegStatus = await this.ffmpegManager.check(ffmpegPath, true);
+    if (generation !== this.generation || this.session.phase !== "starting") return;
+    if (!ffmpegStatus.ready) {
+      await this.refreshSetupState(false, true);
+      if (generation !== this.generation || this.session.phase !== "starting") return;
+      this.setPhase("error");
+      this.view.update({ setupError: ffmpegStatus.message });
+      await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+      await this.reveal();
       return;
     }
 
     try {
       await this.transcriber.validate();
+      if (generation !== this.generation || this.session.phase !== "starting") return;
     } catch (error) {
+      if (generation !== this.generation || this.session.phase !== "starting") return;
       const message = messageFrom(error);
       await this.refreshSetupState(true);
-      this.view.update({ status: "error", error: message });
+      if (generation !== this.generation || this.session.phase !== "starting") return;
+      this.setPhase("error", { error: message });
+      await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
       await this.reveal();
       return;
     }
 
-    this.generation += 1;
     this.chunks = [];
-    this.previewOffset = 0;
     this.previewText = "";
     this.startedAt = Date.now();
-    this.view.update({ status: "recording", transcript: "", elapsedMs: 0, level: 0, error: undefined });
+    this.view.update({ transcript: "", elapsedMs: 0, level: 0, error: undefined });
 
     try {
-      const device = vscode.workspace.getConfiguration("codexVoice").get<string>("audioInput", "default");
-      this.recorder.start(device);
-      await vscode.commands.executeCommand("setContext", "codexVoice.recording", true);
+      const device = configuration.get<string>("audioInput", "default");
+      await this.recorder.start(device, ffmpegPath);
+      if (generation !== this.generation || this.session.phase !== "starting" || !this.recorder.isRecording) return;
+      this.setPhase("recording");
       await this.reveal();
       this.startTimers();
     } catch (error) {
-      await this.fail(error);
+      if (generation === this.generation && this.session.phase === "starting") {
+        await this.fail(error);
+      }
     }
   }
 
   public async stop(): Promise<void> {
-    if (!this.recorder.isRecording) {
+    if (this.session.phase === "starting") {
+      await this.cancel();
       return;
     }
+    if (!this.session.canStop) return;
 
     const generation = ++this.generation;
-    this.transcribing = true;
+    this.setPhase("stopping");
     this.stopTimers();
     this.transcriber.cancelAll();
-    this.view.update({ status: "transcribing", level: 0, error: undefined });
+    this.view.update({ level: 0, error: undefined });
 
     try {
       await this.recorder.stop();
       await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+      if (generation !== this.generation || this.session.phase !== "stopping") return;
+      this.setPhase("transcribing");
       const audio = Buffer.concat(this.chunks);
       const transcript = await this.transcriber.transcribe(audio);
-      if (generation !== this.generation) {
-        return;
-      }
+      if (generation !== this.generation || !this.session.is("transcribing")) return;
       this.previewText = transcript;
-      this.view.update({ status: "ready", transcript, elapsedMs: 0, error: undefined });
+      this.setPhase("ready", { transcript, elapsedMs: 0, error: undefined });
       if (transcript) {
         await vscode.env.clipboard.writeText(transcript);
         void vscode.window.setStatusBarMessage("Codex Voice: transcript copied", 3_000);
       }
     } catch (error) {
-      if (generation === this.generation) {
+      if (generation === this.generation && this.session.phase !== "cancelling") {
         await this.fail(error);
       }
-    } finally {
-      this.transcribing = false;
     }
   }
 
   public async cancel(): Promise<void> {
+    if (!this.session.canCancel) return;
+    this.setPhase("cancelling");
     this.generation += 1;
-    this.transcribing = false;
     this.stopTimers();
     this.transcriber.cancelAll();
     await this.recorder.cancel();
     this.chunks = [];
-    this.previewOffset = 0;
     this.previewText = "";
     await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
-    this.view.update({ status: "ready", transcript: "", elapsedMs: 0, level: 0, error: undefined });
+    this.setPhase("ready", { transcript: "", elapsedMs: 0, level: 0, error: undefined });
   }
 
   public async copy(): Promise<void> {
@@ -170,16 +205,47 @@ class VoiceController implements vscode.Disposable {
   }
 
   public clear(): void {
-    if (!this.recorder.isRecording) {
+    if (!this.session.isBusy) {
       this.previewText = "";
-      this.view.update({ transcript: "", error: undefined, status: "ready" });
+      this.view.update({ transcript: "", error: undefined });
     }
   }
 
   public updateTranscript(text: string): void {
-    if (this.recorder.isRecording || this.transcribing) return;
+    if (this.session.isBusy) return;
     this.previewText = text;
     this.view.update({ transcript: text });
+  }
+
+  private async selectAudioInput(): Promise<void> {
+    if (this.session.isBusy) return;
+    try {
+      const configuration = vscode.workspace.getConfiguration("codexVoice");
+      const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
+      const ffmpegStatus = await this.ffmpegManager.check(ffmpegPath, true);
+      if (!ffmpegStatus.ready) throw new Error(ffmpegStatus.message);
+      const devices = await this.recorder.listAudioInputs(ffmpegPath);
+      if (devices.length === 0) {
+        throw new Error("No microphone was found. Check operating-system microphone permissions and FFmpeg installation.");
+      }
+      if (process.platform !== "win32") {
+        void vscode.window.showInformationMessage("Codex Voice uses the system default Linux audio input.");
+        return;
+      }
+      const current = configuration.get<string>("audioInput", "default");
+      const ordered = [...devices].sort((left, right) => Number(right === current) - Number(left === current));
+      const selected = await vscode.window.showQuickPick(ordered, {
+        placeHolder: "Select the microphone used by Codex Voice",
+        title: "Codex Voice: Audio Input",
+      });
+      if (!selected) return;
+      await vscode.workspace
+        .getConfiguration("codexVoice")
+        .update("audioInput", selected, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(`Codex Voice will use: ${selected}`);
+    } catch (error) {
+      void vscode.window.showErrorMessage(messageFrom(error));
+    }
   }
 
   private async openModelManager(): Promise<void> {
@@ -188,7 +254,7 @@ class VoiceController implements vscode.Disposable {
   }
 
   private async switchModel(modelId: string): Promise<void> {
-    if (this.recorder.isRecording || this.transcribing || this.modelDownloadRunning) return;
+    if (this.session.isBusy || this.modelDownloadRunning) return;
     try {
       const modelPath = await this.modelManager.select(modelId);
       await vscode.workspace
@@ -226,7 +292,6 @@ class VoiceController implements vscode.Disposable {
 
   public dispose(): void {
     this.generation += 1;
-    this.transcribing = false;
     this.stopTimers();
     this.recorder.dispose();
     this.transcriber.dispose();
@@ -263,7 +328,6 @@ class VoiceController implements vscode.Disposable {
         downloadingModelId: undefined,
         downloadProgress: undefined,
         setupError: undefined,
-        status: "ready",
       });
       await this.refreshSetupState();
       void vscode.window.showInformationMessage("Codex Voice model is ready.");
@@ -327,15 +391,26 @@ class VoiceController implements vscode.Disposable {
     }
   }
 
-  private async refreshSetupState(reportMissing = false): Promise<void> {
-    const modelPath = vscode.workspace.getConfiguration("codexVoice").get<string>("modelPath", "").trim();
+  private async refreshSetupState(reportMissing = false, forceFfmpeg = false): Promise<void> {
+    const configuration = vscode.workspace.getConfiguration("codexVoice");
+    const modelPath = configuration.get<string>("modelPath", "").trim();
+    const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
     const modelAvailable = modelPath ? await fileExists(modelPath) : false;
+    const ffmpegStatus = await this.ffmpegManager.check(ffmpegPath, forceFfmpeg);
     const runtimeRequired = !(await this.transcriber.isBinaryAvailable());
     const models = await this.modelManager.list(modelPath);
     this.watchModel(modelPath);
+    const setupRequired = !modelAvailable || runtimeRequired || !ffmpegStatus.ready;
+    if (!this.session.isBusy) {
+      const nextPhase: SessionPhase = setupRequired ? "setup" : "ready";
+      if (this.session.phase !== nextPhase) this.session.transition(nextPhase);
+    }
     this.view.update({
-      setupRequired: !modelAvailable || runtimeRequired,
+      status: this.session.phase,
+      setupRequired,
       modelRequired: !modelAvailable,
+      ffmpegRequired: !ffmpegStatus.ready,
+      ffmpegMessage: ffmpegStatus.message,
       runtimeRequired,
       runtimeInstallSupported: this.runtimeManager.supportsAutomaticInstall,
       models,
@@ -369,7 +444,9 @@ class VoiceController implements vscode.Disposable {
   }
 
   private onAudio(chunk: Buffer): void {
+    if (!["starting", "recording", "stopping"].includes(this.session.phase)) return;
     this.chunks.push(chunk);
+    if (this.session.phase !== "recording") return;
     this.view.update({ level: audioLevel(chunk) });
 
     if (Date.now() - this.startedAt >= MAX_RECORDING_MS) {
@@ -393,31 +470,24 @@ class VoiceController implements vscode.Disposable {
   }
 
   private async updatePreview(): Promise<void> {
-    if (this.previewRunning || !this.recorder.isRecording) {
+    if (this.previewRunning || this.session.phase !== "recording") {
       return;
     }
 
-    const audio = Buffer.concat(this.chunks);
-    if (audio.length - this.previewOffset < MIN_PREVIEW_BYTES) {
-      return;
-    }
+    const audio = previewAudio(Buffer.concat(this.chunks));
+    if (!audio) return;
 
     const generation = this.generation;
-    const end = audio.length;
-    const segment = audio.subarray(this.previewOffset, end);
     this.previewRunning = true;
     try {
-      const text = await this.transcriber.transcribe(segment);
-      if (generation !== this.generation || !this.recorder.isRecording) {
+      const text = await this.transcriber.transcribe(audio);
+      if (!shouldApplyPreview(generation, this.generation, this.session.phase)) {
         return;
       }
-      this.previewOffset = end;
-      if (text) {
-        this.previewText = [this.previewText, text].filter(Boolean).join(" ");
-        this.view.update({ transcript: this.previewText });
-      }
+      this.previewText = text;
+      this.view.update({ transcript: text });
     } catch (error) {
-      if (generation === this.generation && this.recorder.isRecording) {
+      if (shouldApplyPreview(generation, this.generation, this.session.phase)) {
         this.view.update({ error: `Live preview paused: ${messageFrom(error)}` });
       }
     } finally {
@@ -431,8 +501,16 @@ class VoiceController implements vscode.Disposable {
     this.transcriber.cancelAll();
     await this.recorder.cancel();
     await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
-    this.view.update({ status: "error", level: 0, error: messageFrom(error) });
+    this.setPhase("error", { level: 0, error: messageFrom(error) });
     await this.reveal();
+  }
+
+  private setPhase(
+    phase: SessionPhase,
+    update: Partial<Omit<TranscriptState, "status">> = {},
+  ): void {
+    this.session.transition(phase);
+    this.view.update({ ...update, status: phase });
   }
 
   private async reveal(): Promise<void> {

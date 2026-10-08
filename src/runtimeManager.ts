@@ -5,12 +5,13 @@ import { chmod, mkdir, rm, stat } from "node:fs/promises";
 import { ClientRequest } from "node:http";
 import { get as httpsGet } from "node:https";
 import path from "node:path";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 interface RuntimeAsset {
   url: string;
   archiveName: string;
-  directoryName: string;
+  archiveType: "tar.gz" | "zip";
+  binaryRelativePath: string;
   bytes: number;
   sha256: string;
 }
@@ -19,16 +20,34 @@ const RUNTIMES: Record<string, RuntimeAsset> = {
   "linux-x64": {
     url: "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz",
     archiveName: "whisper-bin-ubuntu-x64.tar.gz",
-    directoryName: "whisper-bin-ubuntu-x64",
+    archiveType: "tar.gz",
+    binaryRelativePath: "whisper-bin-ubuntu-x64/whisper-cli",
     bytes: 10_364_195,
     sha256: "a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c",
   },
   "linux-arm64": {
     url: "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-arm64.tar.gz",
     archiveName: "whisper-bin-ubuntu-arm64.tar.gz",
-    directoryName: "whisper-bin-ubuntu-arm64",
+    archiveType: "tar.gz",
+    binaryRelativePath: "whisper-bin-ubuntu-arm64/whisper-cli",
     bytes: 4_608_377,
     sha256: "6b95ebfc60447df48e70ef00a73bdc3f41679ed2d01ef465827206a2ff325149",
+  },
+  "win32-x64": {
+    url: "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip",
+    archiveName: "whisper-bin-x64.zip",
+    archiveType: "zip",
+    binaryRelativePath: "Release/whisper-cli.exe",
+    bytes: 8_928_640,
+    sha256: "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb",
+  },
+  "win32-arm64": {
+    url: "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-win-cpu-arm64.zip",
+    archiveName: "whisper-bin-win-cpu-arm64.zip",
+    archiveType: "zip",
+    binaryRelativePath: "Release/whisper-cli.exe",
+    bytes: 4_371_193,
+    sha256: "28c37e7b598c3d9bbfef94f3bd67f2ee6f12b7c86f3da5edcf5e4308d615ff6d",
   },
 };
 
@@ -46,9 +65,9 @@ export class RuntimeManager implements vscode.Disposable {
     if (!asset) throw new Error("Automatic whisper.cpp runtime installation is not available on this platform.");
 
     const root = this.storageUri.fsPath;
-    const binaryPath = path.join(root, asset.directoryName, "whisper-cli");
+    const binaryPath = path.join(root, asset.binaryRelativePath);
     try {
-      await stat(binaryPath);
+      await this.verify(binaryPath);
       return binaryPath;
     } catch {
       // Continue with a clean installation.
@@ -57,12 +76,13 @@ export class RuntimeManager implements vscode.Disposable {
     await mkdir(root, { recursive: true });
     const archivePath = path.join(root, `${asset.archiveName}.download`);
     await rm(archivePath, { force: true });
-    await rm(path.join(root, asset.directoryName), { recursive: true, force: true });
+    await rm(path.dirname(binaryPath), { recursive: true, force: true });
 
     try {
       await this.download(asset, archivePath, onProgress);
-      await extractTarGz(archivePath, root);
-      await chmod(binaryPath, 0o755);
+      await extractArchive(asset.archiveType, archivePath, root);
+      if (process.platform !== "win32") await chmod(binaryPath, 0o755);
+      await this.verify(binaryPath);
       return binaryPath;
     } finally {
       await rm(archivePath, { force: true });
@@ -80,6 +100,11 @@ export class RuntimeManager implements vscode.Disposable {
 
   private get asset(): RuntimeAsset | undefined {
     return RUNTIMES[`${process.platform}-${process.arch}`];
+  }
+
+  private async verify(binaryPath: string): Promise<void> {
+    await stat(binaryPath);
+    await runProcess(binaryPath, ["--version"], path.dirname(binaryPath));
   }
 
   private download(
@@ -136,15 +161,27 @@ export class RuntimeManager implements vscode.Disposable {
   }
 }
 
-function extractTarGz(archivePath: string, destination: string): Promise<void> {
+function extractArchive(type: RuntimeAsset["archiveType"], archivePath: string, destination: string): Promise<void> {
+  if (type === "zip") {
+    const command = `Expand-Archive -LiteralPath '${escapePowerShell(archivePath)}' -DestinationPath '${escapePowerShell(destination)}' -Force`;
+    return runProcess("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]);
+  }
+  return runProcess("tar", ["-xzf", archivePath, "-C", destination]);
+}
+
+function runProcess(command: string, args: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("tar", ["-xzf", archivePath, "-C", destination], { windowsHide: true });
+    const child = spawn(command, args, { cwd, windowsHide: true });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(stderr.trim() || `Could not extract whisper.cpp runtime (exit ${code}).`));
+      else reject(new Error(stderr.trim() || `${path.basename(command)} exited with code ${code}.`));
     });
   });
+}
+
+function escapePowerShell(value: string): string {
+  return value.replace(/'/g, "''");
 }

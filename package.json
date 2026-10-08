@@ -2,7 +2,7 @@
   "name": "codex-voice",
   "displayName": "Codex Voice",
   "description": "Local streaming voice dictation alongside Codex in VS Code.",
-  "version": "0.4.1",
+  "version": "0.8.1",
   "publisher": "sobansheikh",
   "license": "MIT",
   "repository": {
@@ -66,6 +66,10 @@
       {
         "command": "codexVoice.openTranscript",
         "title": "Codex Voice: Open Transcript"
+      },
+      {
+        "command": "codexVoice.selectAudioInput",
+        "title": "Codex Voice: Select Microphone"
       }
     ],
     "keybindings": [
@@ -119,7 +123,12 @@
         "codexVoice.audioInput": {
           "type": "string",
           "default": "default",
-          "description": "FFmpeg audio input device. Use 'default' for the system microphone on Linux."
+          "description": "FFmpeg audio input device. Use 'default' for the system microphone on Linux or automatic DirectShow selection on Windows."
+        },
+        "codexVoice.ffmpegPath": {
+          "type": "string",
+          "default": "ffmpeg",
+          "description": "Path to the FFmpeg executable."
         },
         "codexVoice.previewIntervalMs": {
           "type": "number",
@@ -135,7 +144,12 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "check": "tsc --noEmit -p ./",
-    "package": "vsce package"
+    "test": "npm run compile && node --test tests/*.test.cjs",
+    "package": "vsce package",
+    "package:linux-x64": "vsce package --target linux-x64",
+    "package:linux-arm64": "vsce package --target linux-arm64",
+    "package:win32-x64": "vsce package --target win32-x64",
+    "package:win32-arm64": "vsce package --target win32-arm64"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

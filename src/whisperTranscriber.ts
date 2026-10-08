@@ -4,6 +4,7 @@ import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as vscode from "vscode";
 import { encodePcm16Wav } from "./wav";
+import { buildWhisperArguments } from "./whisperArguments";
 
 const SAMPLE_RATE = 16_000;
 
@@ -58,16 +59,7 @@ export class WhisperTranscriber implements vscode.Disposable {
     await writeFile(inputPath, encodePcm16Wav(pcm, SAMPLE_RATE));
 
     try {
-      return await this.run(binaryPath, [
-        "-m",
-        modelPath,
-        "-f",
-        inputPath,
-        "-l",
-        language,
-        "--no-timestamps",
-        "-np",
-      ]);
+      return await this.run(binaryPath, buildWhisperArguments(modelPath, inputPath, language));
     } finally {
       await rm(inputPath, { force: true });
     }

@@ -5,6 +5,8 @@ const STDERR_LIMIT = 8_000;
 
 export class AudioRecorder {
   private process: ChildProcessWithoutNullStreams | undefined;
+  private starting = false;
+  private startGeneration = 0;
   private stopping = false;
   private stderr = "";
 
@@ -14,17 +16,28 @@ export class AudioRecorder {
   ) {}
 
   public get isRecording(): boolean {
-    return this.process !== undefined;
+    return this.process !== undefined || this.starting;
   }
 
-  public start(device: string): void {
-    if (this.process) {
+  public async start(device: string, ffmpegPath = "ffmpeg"): Promise<void> {
+    if (this.process || this.starting) {
       throw new Error("A recording is already in progress.");
     }
 
+    const generation = ++this.startGeneration;
+    this.starting = true;
     this.stopping = false;
     this.stderr = "";
-    const child = spawn("ffmpeg", this.buildArguments(device), {
+    let resolvedDevice: string;
+    try {
+      resolvedDevice = process.platform === "win32" && (!device || device === "default")
+        ? await this.defaultWindowsInput(ffmpegPath)
+        : device;
+    } finally {
+      if (generation === this.startGeneration) this.starting = false;
+    }
+    if (generation !== this.startGeneration) return;
+    const child = spawn(ffmpegPath, buildAudioArguments(process.platform, resolvedDevice), {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -52,6 +65,8 @@ export class AudioRecorder {
   }
 
   public async stop(): Promise<void> {
+    this.startGeneration += 1;
+    this.starting = false;
     const child = this.process;
     if (!child) {
       return;
@@ -83,6 +98,8 @@ export class AudioRecorder {
   }
 
   public async cancel(): Promise<void> {
+    this.startGeneration += 1;
+    this.starting = false;
     const child = this.process;
     if (!child) {
       return;
@@ -98,33 +115,84 @@ export class AudioRecorder {
   }
 
   public dispose(): void {
+    this.startGeneration += 1;
+    this.starting = false;
     this.stopping = true;
     this.process?.kill("SIGKILL");
     this.process = undefined;
   }
 
-  private buildArguments(device: string): string[] {
-    const output = [
-      "-hide_banner",
-      "-loglevel",
-      "warning",
-      "-ar",
-      String(SAMPLE_RATE),
-      "-ac",
-      "1",
-      "-acodec",
-      "pcm_s16le",
-      "-f",
-      "s16le",
-      "pipe:1",
-    ];
-
-    if (process.platform === "darwin") {
-      return ["-f", "avfoundation", "-i", device || ":0", ...output];
-    }
-    if (process.platform === "win32") {
-      return ["-f", "dshow", "-i", `audio=${device || "default"}`, ...output];
-    }
-    return ["-f", "pulse", "-i", device || "default", ...output];
+  public async listAudioInputs(ffmpegPath = "ffmpeg"): Promise<string[]> {
+    if (process.platform !== "win32") return ["default"];
+    return this.windowsAudioInputs(ffmpegPath);
   }
+
+  private async defaultWindowsInput(ffmpegPath: string): Promise<string> {
+    const devices = await this.windowsAudioInputs(ffmpegPath);
+    if (devices.length === 0) {
+      throw new Error("No Windows microphone was found. Check microphone permissions and FFmpeg installation.");
+    }
+    return devices[0];
+  }
+
+  private windowsAudioInputs(ffmpegPath: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(ffmpegPath, ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"], {
+        windowsHide: true,
+      });
+      let stderr = "";
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill("SIGKILL");
+        reject(new Error("Timed out while discovering Windows microphones."));
+      }, 10_000);
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+      child.once("error", (error) => finish(() => reject(new Error(`Could not enumerate Windows audio devices: ${error.message}`))));
+      child.once("exit", () => finish(() => {
+        resolve(parseWindowsAudioInputs(stderr));
+      }));
+    });
+  }
+}
+
+export function buildAudioArguments(platform: NodeJS.Platform, device: string): string[] {
+  const output = [
+    "-hide_banner",
+    "-loglevel",
+    "warning",
+    "-ar",
+    String(SAMPLE_RATE),
+    "-ac",
+    "1",
+    "-acodec",
+    "pcm_s16le",
+    "-f",
+    "s16le",
+    "pipe:1",
+  ];
+
+  if (platform === "darwin") {
+    return ["-f", "avfoundation", "-i", device || ":0", ...output];
+  }
+  if (platform === "win32") {
+    return ["-f", "dshow", "-i", `audio=${device}`, ...output];
+  }
+  return ["-f", "pulse", "-i", device || "default", ...output];
+}
+
+export function parseWindowsAudioInputs(stderr: string): string[] {
+  const devices: string[] = [];
+  const pattern = /"([^"]+)"\s+\(audio\)/g;
+  for (const match of stderr.matchAll(pattern)) {
+    if (!devices.includes(match[1])) devices.push(match[1]);
+  }
+  return devices;
 }

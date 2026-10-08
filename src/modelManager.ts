@@ -4,7 +4,7 @@ import { access, mkdir, rename, rm, stat } from "node:fs/promises";
 import { ClientRequest } from "node:http";
 import { get as httpsGet } from "node:https";
 import path from "node:path";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 export interface WhisperModel {
   id: string;

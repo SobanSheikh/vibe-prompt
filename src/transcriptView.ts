@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { WhisperModelState } from "./modelManager";
+import type { SessionPhase } from "./sessionState";
 
-export type VoiceStatus = "ready" | "recording" | "transcribing" | "error";
+export type VoiceStatus = SessionPhase;
 
 export interface TranscriptState {
   status: VoiceStatus;
@@ -13,6 +14,8 @@ export interface TranscriptState {
   modelRequired: boolean;
   runtimeRequired: boolean;
   runtimeInstallSupported: boolean;
+  ffmpegRequired: boolean;
+  ffmpegMessage: string;
   models: readonly WhisperModelState[];
   manageModels: boolean;
   downloadingModelId?: string;
@@ -37,6 +40,9 @@ export interface TranscriptActions {
   closeModelManager(): void | Promise<void>;
   switchModel(modelId: string): void | Promise<void>;
   removeModel(modelId: string): void | Promise<void>;
+  selectAudioInput(): void | Promise<void>;
+  checkFfmpeg(): void | Promise<void>;
+  openFfmpegHelp(): void | Promise<void>;
 }
 
 export class TranscriptViewProvider implements vscode.WebviewViewProvider {
@@ -44,7 +50,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
 
   private view: vscode.WebviewView | undefined;
   private state: TranscriptState = {
-    status: "ready",
+    status: "setup",
     transcript: "",
     elapsedMs: 0,
     level: 0,
@@ -52,6 +58,8 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     modelRequired: true,
     runtimeRequired: true,
     runtimeInstallSupported: false,
+    ffmpegRequired: true,
+    ffmpegMessage: "Checking FFmpeg...",
     models: [],
     manageModels: false,
   };
@@ -78,6 +86,9 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
         case "closeModelManager": void this.actions.closeModelManager(); break;
         case "switchModel": if (message.modelId) void this.actions.switchModel(message.modelId); break;
         case "removeModel": if (message.modelId) void this.actions.removeModel(message.modelId); break;
+        case "selectAudioInput": void this.actions.selectAudioInput(); break;
+        case "checkFfmpeg": void this.actions.checkFfmpeg(); break;
+        case "openFfmpegHelp": void this.actions.openFfmpegHelp(); break;
       }
     });
     this.publish();
@@ -111,6 +122,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     .status { display: flex; align-items: center; gap: 8px; min-width: 150px; margin-right: auto; color: var(--vscode-descriptionForeground); }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
     .recording .dot { background: var(--vscode-testing-iconFailed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-testing-iconFailed) 20%, transparent); }
+    .starting .dot, .stopping .dot, .transcribing .dot, .cancelling .dot { background: var(--vscode-progressBar-background); }
     .meter { width: 52px; height: 4px; overflow: hidden; background: var(--vscode-progressBar-background); opacity: .35; }
     .meter > span { display: block; height: 100%; width: 0; background: var(--vscode-progressBar-background); transition: width 80ms linear; }
     button { height: 30px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; padding: 0 10px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); cursor: pointer; font: inherit; }
@@ -143,17 +155,40 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     progress { width: min(420px, 70%); height: 5px; accent-color: var(--vscode-progressBar-background); }
     .setup-footer { margin-top: 10px; color: var(--vscode-descriptionForeground); font-size: 12px; }
     .setup-error { margin-top: 10px; color: var(--vscode-errorForeground); white-space: pre-wrap; }
+    .setup-dependency + .setup-dependency { margin-top: 8px; }
+    .dependency-actions { display: flex; gap: 6px; }
     .setup-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
     .setup-header h2 { margin: 0; }
     .setup-header button { margin-left: auto; }
-    .model-picker { height: 30px; max-width: 170px; border: 1px solid var(--vscode-dropdown-border); border-radius: 4px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); padding: 0 7px; }
+    .model-picker { position: relative; flex: 0 0 172px; }
+    .model-picker-trigger { width: 100%; justify-content: flex-start; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border-color: var(--vscode-dropdown-border); }
+    .model-picker-trigger:hover { background: var(--vscode-list-hoverBackground); }
+    .model-picker-trigger[aria-expanded="true"] { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    .model-picker-trigger .model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .model-picker-trigger .chevron { margin-left: auto; transition: transform 120ms ease; }
+    .model-picker-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+    .model-menu { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; width: max(240px, 100%); max-width: min(320px, calc(100vw - 24px)); padding: 4px; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); box-shadow: 0 4px 14px rgba(0, 0, 0, .28); }
+    .model-menu[hidden] { display: none; }
+    .model-option { width: 100%; height: auto; min-height: 42px; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; padding: 6px 8px; border: 0; text-align: left; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: transparent; }
+    .model-option:hover, .model-option:focus-visible { outline: none; color: var(--vscode-list-hoverForeground); background: var(--vscode-list-hoverBackground); }
+    .model-option.active { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+    .model-option .check { grid-row: 1 / 3; align-self: center; visibility: hidden; }
+    .model-option.active .check { visibility: visible; }
+    .model-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .model-option-meta { color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .model-option.active .model-option-meta { color: inherit; opacity: .8; }
   </style>
 </head>
 <body>
   <section id="setup" class="setup">
     <div class="setup-header"><h2 id="setupTitle">Set up local transcription</h2><button id="closeModelManager">Done</button></div>
-    <p id="setupCopy" class="setup-copy">Install the local runtime and choose a Whisper model. Downloads are verified before use.</p>
-    <div id="runtimeSetup" class="model">
+    <p id="setupCopy" class="setup-copy">Complete the local dependencies and choose a Whisper model. Downloads are verified before use.</p>
+    <div id="ffmpegSetup" class="model setup-dependency">
+      <div class="model-head"><span>FFmpeg</span><span>System dependency</span></div>
+      <p id="ffmpegDescription">Checking FFmpeg...</p>
+      <div class="dependency-actions"><button id="checkFfmpeg" class="primary">Check again</button><button id="openFfmpegHelp">Installation guide</button></div>
+    </div>
+    <div id="runtimeSetup" class="model setup-dependency">
       <div class="model-head"><span>Whisper runtime</span><span>10 MB</span></div>
       <p id="runtimeDescription">Runs speech recognition locally</p>
       <button id="installRuntime" class="primary">Install runtime</button>
@@ -170,8 +205,16 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
   <div id="workspace">
   <div class="toolbar">
     <div class="status" id="status"><span class="dot"></span><span id="statusText">Ready</span><span id="time"></span><span class="meter"><span id="level"></span></span></div>
-    <select id="modelPicker" class="model-picker" title="Active transcription model"></select>
+    <div id="modelPicker" class="model-picker">
+      <button id="modelPickerButton" class="model-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" title="Active transcription model">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
+        <span id="modelPickerLabel" class="model-label">Model</span>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="modelPickerMenu" class="model-menu" role="listbox" aria-label="Transcription model" hidden></div>
+    </div>
     <button id="openModelManager" title="Download or remove models">Models</button>
+    <button id="selectAudioInput" title="Select microphone" aria-label="Select microphone"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg></button>
     <button id="start" class="primary" title="Start recording"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>Start</button>
     <button id="stop" title="Stop and transcribe"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg>Stop</button>
     <button id="cancel" title="Cancel recording"><svg viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></svg>Cancel</button>
@@ -193,9 +236,40 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     document.getElementById('cancelRuntimeDownload').addEventListener('click', () => send('cancelDownload'));
     document.getElementById('installRuntime').addEventListener('click', () => send('installRuntime'));
     document.getElementById('openModelManager').addEventListener('click', () => send('openModelManager'));
+    document.getElementById('selectAudioInput').addEventListener('click', () => send('selectAudioInput'));
+    document.getElementById('checkFfmpeg').addEventListener('click', () => send('checkFfmpeg'));
+    document.getElementById('openFfmpegHelp').addEventListener('click', () => send('openFfmpegHelp'));
     document.getElementById('closeModelManager').addEventListener('click', () => send('closeModelManager'));
-    document.getElementById('modelPicker').addEventListener('change', event => {
-      vscode.postMessage({ action: 'switchModel', modelId: event.target.value });
+    const modelPicker = document.getElementById('modelPicker');
+    const modelPickerButton = document.getElementById('modelPickerButton');
+    const modelPickerMenu = document.getElementById('modelPickerMenu');
+    const closeModelPicker = () => {
+      modelPickerMenu.hidden = true;
+      modelPickerButton.setAttribute('aria-expanded', 'false');
+    };
+    const openModelPicker = () => {
+      if (modelPickerButton.disabled) return;
+      modelPickerMenu.hidden = false;
+      modelPickerButton.setAttribute('aria-expanded', 'true');
+      (modelPickerMenu.querySelector('.active') || modelPickerMenu.querySelector('.model-option'))?.focus();
+    };
+    modelPickerButton.addEventListener('click', () => {
+      if (modelPickerMenu.hidden) openModelPicker(); else closeModelPicker();
+    });
+    modelPickerMenu.addEventListener('keydown', event => {
+      const options = [...modelPickerMenu.querySelectorAll('.model-option')];
+      const current = options.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        options[(current + direction + options.length) % options.length]?.focus();
+      } else if (event.key === 'Escape') {
+        closeModelPicker();
+        modelPickerButton.focus();
+      }
+    });
+    document.addEventListener('click', event => {
+      if (!modelPicker.contains(event.target)) closeModelPicker();
     });
     document.getElementById('transcript').addEventListener('input', event => {
       vscode.postMessage({ action: 'updateTranscript', text: event.target.value });
@@ -208,19 +282,25 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       if (event.data.type !== 'state') return;
       const state = event.data.state;
       const recording = state.status === 'recording';
-      const busy = recording || state.status === 'transcribing';
+      const busyPhases = ['starting', 'recording', 'stopping', 'transcribing', 'cancelling'];
+      const busy = busyPhases.includes(state.status);
       const setup = document.getElementById('setup');
       const setupVisible = state.setupRequired || state.manageModels;
       setup.classList.toggle('visible', setupVisible);
       document.getElementById('workspace').hidden = setupVisible;
       document.getElementById('modelSetup').hidden = !(state.modelRequired || state.manageModels);
       document.getElementById('runtimeSetup').hidden = !state.runtimeRequired;
+      document.getElementById('ffmpegSetup').hidden = !state.ffmpegRequired;
+      document.getElementById('ffmpegDescription').textContent = state.ffmpegMessage;
       document.getElementById('closeModelManager').hidden = state.setupRequired || !state.manageModels;
       document.getElementById('setupTitle').textContent = state.manageModels && !state.setupRequired ? 'Manage models' : 'Set up local transcription';
-      document.getElementById('setupCopy').textContent = state.manageModels && !state.setupRequired ? 'Download, activate, or remove local transcription models.' : 'Install the local runtime and choose a Whisper model. Downloads are verified before use.';
+      document.getElementById('setupCopy').textContent = state.manageModels && !state.setupRequired ? 'Download, activate, or remove local transcription models.' : 'Complete the local dependencies and choose a Whisper model. Downloads are verified before use.';
       const installRuntime = document.getElementById('installRuntime');
       installRuntime.disabled = state.installingRuntime || Boolean(state.downloadingModelId);
-      installRuntime.textContent = state.installingRuntime ? 'Installing...' : state.runtimeInstallSupported ? 'Install runtime' : 'Use advanced settings';
+      installRuntime.textContent = state.installingRuntime ? 'Installing...' : state.runtimeInstallSupported ? 'Install runtime' : 'Unsupported platform';
+      document.getElementById('runtimeDescription').textContent = state.runtimeInstallSupported
+        ? 'Runs speech recognition locally'
+        : 'Automatic setup is not available for this platform yet';
       const runtimeDownload = document.getElementById('runtimeDownload');
       runtimeDownload.classList.toggle('visible', Boolean(state.installingRuntime));
       const runtimePercent = Math.round((state.runtimeProgress || 0) * 100);
@@ -265,24 +345,37 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
         return item;
       }));
       const installedModels = state.models.filter(model => model.installed);
-      const modelPicker = document.getElementById('modelPicker');
-      const modelOptions = installedModels.map(model => {
-        const option = document.createElement('option');
-        option.value = model.id;
-        option.textContent = model.name;
-        option.selected = model.active;
+      const activeModel = installedModels.find(model => model.active);
+      document.getElementById('modelPickerLabel').textContent = activeModel?.name || (!state.modelRequired ? 'Custom model' : 'No model');
+      modelPickerMenu.replaceChildren(...installedModels.map(model => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'model-option' + (model.active ? ' active' : '');
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(model.active));
+        const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        check.setAttribute('class', 'check');
+        check.setAttribute('viewBox', '0 0 24 24');
+        const checkPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        checkPath.setAttribute('d', 'm5 12 4 4L19 6');
+        check.appendChild(checkPath);
+        const name = document.createElement('span');
+        name.className = 'model-option-name';
+        name.textContent = model.name;
+        const meta = document.createElement('span');
+        meta.className = 'model-option-meta';
+        meta.textContent = model.description + ' · ' + model.sizeLabel;
+        option.append(check, name, meta);
+        option.addEventListener('click', () => {
+          closeModelPicker();
+          if (!model.active) vscode.postMessage({ action: 'switchModel', modelId: model.id });
+        });
         return option;
-      });
-      if (!state.modelRequired && !installedModels.some(model => model.active)) {
-        const custom = document.createElement('option');
-        custom.value = '';
-        custom.textContent = 'Custom model';
-        custom.selected = true;
-        custom.disabled = true;
-        modelOptions.unshift(custom);
-      }
-      modelPicker.replaceChildren(...modelOptions);
-      modelPicker.disabled = busy || installedModels.length < 2;
+      }));
+      modelPickerButton.disabled = busy || installedModels.length < 2;
+      document.getElementById('openModelManager').disabled = busy;
+      document.getElementById('selectAudioInput').disabled = busy;
+      if (modelPickerButton.disabled) closeModelPicker();
       const download = document.getElementById('download');
       download.classList.toggle('visible', Boolean(state.downloadingModelId));
       const percent = Math.round((state.downloadProgress || 0) * 100);
@@ -291,14 +384,23 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       const setupError = document.getElementById('setupError');
       setupError.textContent = state.setupError || '';
       setupError.hidden = !state.setupError;
-      const labels = { ready: 'Ready', recording: 'Recording', transcribing: 'Transcribing', error: 'Needs attention' };
+      const labels = {
+        setup: 'Setup required',
+        ready: 'Ready',
+        starting: 'Starting',
+        recording: 'Recording',
+        stopping: 'Stopping',
+        transcribing: 'Transcribing',
+        cancelling: 'Cancelling',
+        error: 'Needs attention'
+      };
       document.getElementById('status').className = 'status ' + state.status;
       document.getElementById('statusText').textContent = labels[state.status];
       document.getElementById('time').textContent = recording ? formatTime(state.elapsedMs) : '';
       document.getElementById('level').style.width = Math.round((state.level || 0) * 100) + '%';
-      document.getElementById('start').disabled = busy;
+      document.getElementById('start').disabled = busy || state.status === 'setup';
       document.getElementById('stop').disabled = !recording;
-      document.getElementById('cancel').disabled = !busy;
+      document.getElementById('cancel').disabled = !busy || state.status === 'cancelling';
       document.getElementById('copy').disabled = !state.transcript;
       document.getElementById('clear').disabled = busy || !state.transcript;
       const transcript = document.getElementById('transcript');
