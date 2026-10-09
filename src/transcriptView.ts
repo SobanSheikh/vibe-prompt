@@ -126,7 +126,6 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     #workspace { display: flex; min-height: 188px; flex-direction: column; }
     .draft-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; margin-bottom: 6px; }
     .draft-heading, .draft-actions { display: flex; align-items: center; gap: 8px; }
-    .draft-title { font-weight: 600; }
     .header-status { min-width: auto; padding: 3px 8px; text-transform: uppercase; font-size: 11px; font-weight: 700; }
     .toolbar { display: flex; align-items: center; gap: 6px; min-height: 46px; padding: 7px 8px; flex-wrap: nowrap; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-sideBar-background); }
     .toolbar-group { display: flex; align-items: center; gap: 6px; }
@@ -233,7 +232,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
   </section>
   <div id="workspace">
   <div class="draft-header">
-    <div class="draft-heading"><div id="headerStatus" class="status header-status ready"><span class="dot"></span><span id="headerStatusText">Ready</span></div><span class="draft-title">Voice draft</span></div>
+    <div class="draft-heading"><div id="headerStatus" class="status header-status ready"><span class="dot"></span><span id="headerStatusText">Ready</span></div></div>
     <div class="draft-actions">
       <button id="copy" title="Copy transcript"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
       <button id="clear" class="icon-button" title="Clear transcript" aria-label="Clear transcript"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg></button>
