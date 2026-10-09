@@ -250,7 +250,7 @@ export class RuntimeManager implements vscode.Disposable {
     if (!url.startsWith("https:")) return Promise.reject(new Error("Refusing a non-HTTPS runtime download."));
 
     return new Promise((resolve, reject) => {
-      const request = httpsGet(url, { headers: { "User-Agent": "Codex-Voice-VSCode" } }, (response) => {
+      const request = httpsGet(url, { headers: { "User-Agent": "VibePrompt-VSCode" } }, (response) => {
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           response.resume();
           const redirectUrl = new URL(response.headers.location, url).toString();

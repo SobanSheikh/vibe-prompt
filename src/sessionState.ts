@@ -57,7 +57,7 @@ export class SessionState {
   public transition(next: SessionPhase): void {
     if (next === this.currentPhase) return;
     if (!TRANSITIONS[this.currentPhase].includes(next)) {
-      throw new Error(`Invalid Codex Voice transition: ${this.currentPhase} -> ${next}`);
+      throw new Error(`Invalid Vibe Prompt transition: ${this.currentPhase} -> ${next}`);
     }
     this.currentPhase = next;
   }

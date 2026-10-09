@@ -33,6 +33,6 @@ test("rejects invalid transitions", () => {
   const session = new SessionState();
   assert.throws(
     () => session.transition("recording"),
-    /Invalid Codex Voice transition: setup -> recording/,
+    /Invalid Vibe Prompt transition: setup -> recording/,
   );
 });

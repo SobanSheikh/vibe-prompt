@@ -46,7 +46,7 @@ export interface TranscriptActions {
 }
 
 export class TranscriptViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "codexVoice.transcript";
+  public static readonly viewType = "vibePrompt.transcript";
 
   private view: vscode.WebviewView | undefined;
   private state: TranscriptState = {
@@ -109,6 +109,11 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
 
   private html(webview: vscode.Webview): string {
     const nonce = getNonce();
+    const platformSetupCopy = process.platform === "darwin"
+      ? "Before runtime setup on macOS, run: brew install cmake ffmpeg; xcode-select --install."
+      : process.platform === "win32"
+        ? "Windows requires an FFmpeg build with DirectShow support. The Whisper runtime and model can be installed below."
+        : "Linux requires FFmpeg with PulseAudio support. The Whisper runtime and model can be installed below.";
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -117,21 +122,32 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 12px; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
-    .toolbar { min-height: 34px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .status { display: flex; align-items: center; gap: 8px; min-width: 150px; margin-right: auto; color: var(--vscode-descriptionForeground); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
-    .recording .dot { background: var(--vscode-testing-iconFailed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-testing-iconFailed) 20%, transparent); }
-    .starting .dot, .stopping .dot, .transcribing .dot, .cancelling .dot { background: var(--vscode-progressBar-background); }
-    .meter { width: 52px; height: 4px; overflow: hidden; background: var(--vscode-progressBar-background); opacity: .35; }
-    .meter > span { display: block; height: 100%; width: 0; background: var(--vscode-progressBar-background); transition: width 80ms linear; }
+    body { margin: 0; padding: 8px 12px 10px; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
+    #workspace { display: flex; min-height: 188px; flex-direction: column; }
+    .draft-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; margin-bottom: 6px; }
+    .draft-heading, .draft-actions { display: flex; align-items: center; gap: 8px; }
+    .draft-title { font-weight: 600; }
+    .header-status { min-width: auto; padding: 3px 8px; text-transform: uppercase; font-size: 11px; font-weight: 700; }
+    .toolbar { display: flex; align-items: center; gap: 6px; min-height: 46px; padding: 7px 8px; flex-wrap: nowrap; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-sideBar-background); }
+    .toolbar-group { display: flex; align-items: center; gap: 6px; }
+    .toolbar-main { min-width: 0; }
+    .toolbar-actions { margin-left: auto; flex: 0 0 auto; }
+    .toolbar-divider { width: 1px; height: 22px; flex: 0 0 auto; background: var(--vscode-panel-border); }
+    .status { display: flex; align-items: center; gap: 7px; min-width: 118px; padding: 4px 8px; border-radius: 4px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, #f54287 8%, var(--vscode-editor-background)); }
+    .dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #f54287; }
+    .recording .dot { box-shadow: 0 0 0 3px color-mix(in srgb, #f54287 22%, transparent); }
+    .starting .dot, .stopping .dot, .transcribing .dot, .cancelling .dot { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .meter { width: 48px; height: 3px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, #f54287 18%, transparent); }
+    .meter > span { display: block; height: 100%; width: 0; border-radius: inherit; background: #f54287; transition: width 80ms linear; }
     button { height: 30px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; padding: 0 10px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); cursor: pointer; font: inherit; }
     button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-    button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-    button.primary:hover { background: var(--vscode-button-hoverBackground); }
+    button.primary { color: #241019; background: #f54287; border-color: #f54287; font-weight: 600; }
+    button.primary:hover { background: #ff639d; border-color: #ff639d; }
     button:disabled { opacity: .45; cursor: default; }
+    button.icon-button { width: 30px; justify-content: center; padding: 0; }
     svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .transcript { width: 100%; min-height: 110px; max-height: 34vh; margin-top: 10px; padding: 10px 12px; resize: vertical; overflow: auto; line-height: 1.55; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; outline: none; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; }
+    .transcript { width: 100%; min-height: 118px; max-height: 34vh; margin: 0 0 10px; padding: 11px 13px; resize: vertical; overflow: auto; line-height: 1.55; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; outline: none; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; }
     .transcript:focus { border-color: var(--vscode-focusBorder); }
     .transcript::placeholder { color: var(--vscode-input-placeholderForeground); }
     .transcript:read-only { cursor: default; }
@@ -177,12 +193,25 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     .model-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
     .model-option-meta { color: var(--vscode-descriptionForeground); font-size: 11px; }
     .model-option.active .model-option-meta { color: inherit; opacity: .8; }
+    @media (max-width: 760px) {
+      .toolbar { flex-wrap: wrap; }
+      .status { min-width: 0; }
+      .toolbar-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
+      .model-picker { flex: 1 1 150px; }
+    }
+    @media (max-width: 480px) {
+      body { padding-inline: 8px; }
+      .toolbar-group { flex-wrap: wrap; }
+      .toolbar-actions { justify-content: flex-end; }
+      .button-label.optional { display: none; }
+    }
   </style>
 </head>
 <body>
   <section id="setup" class="setup">
     <div class="setup-header"><h2 id="setupTitle">Set up local transcription</h2><button id="closeModelManager">Done</button></div>
     <p id="setupCopy" class="setup-copy">Complete the local dependencies and choose a Whisper model. Downloads are verified before use.</p>
+    <p id="platformSetupCopy" class="setup-copy">${platformSetupCopy}</p>
     <div id="ffmpegSetup" class="model setup-dependency">
       <div class="model-head"><span>FFmpeg</span><span>System dependency</span></div>
       <p id="ffmpegDescription">Checking FFmpeg...</p>
@@ -203,8 +232,17 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     <div class="setup-footer">English-only models provide the best size and speed for English dictation. <button id="advancedSettings" class="settings">Advanced settings</button></div>
   </section>
   <div id="workspace">
+  <div class="draft-header">
+    <div class="draft-heading"><div id="headerStatus" class="status header-status ready"><span class="dot"></span><span id="headerStatusText">Ready</span></div><span class="draft-title">Voice draft</span></div>
+    <div class="draft-actions">
+      <button id="copy" title="Copy transcript"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
+      <button id="clear" class="icon-button" title="Clear transcript" aria-label="Clear transcript"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg></button>
+    </div>
+  </div>
+  <textarea id="transcript" class="transcript" placeholder="Transcript appears here." spellcheck="true"></textarea>
+  <div id="error" class="error" hidden></div>
   <div class="toolbar">
-    <div class="status" id="status"><span class="dot"></span><span id="statusText">Ready</span><span id="time"></span><span class="meter"><span id="level"></span></span></div>
+    <div class="toolbar-group toolbar-main">
     <div id="modelPicker" class="model-picker">
       <button id="modelPickerButton" class="model-picker-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" title="Active transcription model">
         <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
@@ -214,16 +252,17 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       <div id="modelPickerMenu" class="model-menu" role="listbox" aria-label="Transcription model" hidden></div>
     </div>
     <button id="openModelManager" title="Download or remove models">Models</button>
-    <button id="selectAudioInput" title="Select microphone" aria-label="Select microphone"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg></button>
+    <button id="selectAudioInput" class="icon-button" title="Select microphone" aria-label="Select microphone"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg></button>
+    <button id="settings" class="icon-button" title="Open Vibe Prompt settings" aria-label="Open Vibe Prompt settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 9 19.37a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.63 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15 4.63a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
+    <span class="toolbar-divider"></span>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Ready</span><span id="time"></span><span class="meter"><span id="level"></span></span></div>
+    </div>
+    <div class="toolbar-group toolbar-actions">
+    <button id="cancel" title="Cancel recording"><svg viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></svg><span class="button-label optional">Cancel</span></button>
+    <button id="stop" title="Stop and transcribe"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg><span class="button-label optional">Stop</span></button>
     <button id="start" class="primary" title="Start recording"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>Start</button>
-    <button id="stop" title="Stop and transcribe"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg>Stop</button>
-    <button id="cancel" title="Cancel recording"><svg viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></svg>Cancel</button>
-    <button id="copy" title="Copy transcript"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
-    <button id="clear" title="Clear transcript"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></svg>Clear</button>
+    </div>
   </div>
-  <textarea id="transcript" class="transcript" placeholder="Transcript appears here." spellcheck="true"></textarea>
-  <div id="error" class="error" hidden></div>
-  <button id="settings" class="settings" hidden>Open settings</button>
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -295,6 +334,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       document.getElementById('closeModelManager').hidden = state.setupRequired || !state.manageModels;
       document.getElementById('setupTitle').textContent = state.manageModels && !state.setupRequired ? 'Manage models' : 'Set up local transcription';
       document.getElementById('setupCopy').textContent = state.manageModels && !state.setupRequired ? 'Download, activate, or remove local transcription models.' : 'Complete the local dependencies and choose a Whisper model. Downloads are verified before use.';
+      document.getElementById('platformSetupCopy').hidden = state.manageModels && !state.setupRequired;
       const installRuntime = document.getElementById('installRuntime');
       installRuntime.disabled = state.installingRuntime || Boolean(state.downloadingModelId);
       installRuntime.textContent = state.installingRuntime ? 'Installing...' : state.runtimeInstallSupported ? 'Install runtime' : 'Unsupported platform';
@@ -396,6 +436,8 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       };
       document.getElementById('status').className = 'status ' + state.status;
       document.getElementById('statusText').textContent = labels[state.status];
+      document.getElementById('headerStatus').className = 'status header-status ' + state.status;
+      document.getElementById('headerStatusText').textContent = labels[state.status];
       document.getElementById('time').textContent = recording ? formatTime(state.elapsedMs) : '';
       document.getElementById('level').style.width = Math.round((state.level || 0) * 100) + '%';
       document.getElementById('start').disabled = busy || state.status === 'setup';
@@ -409,7 +451,6 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
       const error = document.getElementById('error');
       error.textContent = state.error || '';
       error.hidden = !state.error;
-      document.getElementById('settings').hidden = !state.error;
       if (busy) transcript.scrollTop = transcript.scrollHeight;
     });
   </script>

@@ -51,7 +51,7 @@ class VoiceController implements vscode.Disposable {
       copy: () => this.copy(),
       clear: () => this.clear(),
       openSettings: async () => {
-        await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:sobansheikh.codex-voice");
+        await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:sobansheikh.vibe-prompt");
       },
       downloadModel: (modelId) => this.downloadModel(modelId),
       cancelDownload: () => this.cancelModelDownload(),
@@ -73,21 +73,21 @@ class VoiceController implements vscode.Disposable {
   public register(): vscode.Disposable[] {
     return [
       vscode.window.registerWebviewViewProvider(TranscriptViewProvider.viewType, this.view),
-      vscode.commands.registerCommand("codexVoice.toggleRecording", () =>
+      vscode.commands.registerCommand("vibePrompt.toggleRecording", () =>
         this.session.phase === "recording" ? this.stop() : this.session.isBusy ? this.cancel() : this.start(),
       ),
-      vscode.commands.registerCommand("codexVoice.startRecording", () => this.start()),
-      vscode.commands.registerCommand("codexVoice.stopRecording", () => this.stop()),
-      vscode.commands.registerCommand("codexVoice.cancelRecording", () => this.cancel()),
-      vscode.commands.registerCommand("codexVoice.copyTranscript", () => this.copy()),
-      vscode.commands.registerCommand("codexVoice.clearTranscript", () => this.clear()),
-      vscode.commands.registerCommand("codexVoice.openTranscript", () => this.reveal()),
-      vscode.commands.registerCommand("codexVoice.selectAudioInput", () => this.selectAudioInput()),
+      vscode.commands.registerCommand("vibePrompt.startRecording", () => this.start()),
+      vscode.commands.registerCommand("vibePrompt.stopRecording", () => this.stop()),
+      vscode.commands.registerCommand("vibePrompt.cancelRecording", () => this.cancel()),
+      vscode.commands.registerCommand("vibePrompt.copyTranscript", () => this.copy()),
+      vscode.commands.registerCommand("vibePrompt.clearTranscript", () => this.clear()),
+      vscode.commands.registerCommand("vibePrompt.openTranscript", () => this.reveal()),
+      vscode.commands.registerCommand("vibePrompt.selectAudioInput", () => this.selectAudioInput()),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (
-          event.affectsConfiguration("codexVoice.modelPath")
-          || event.affectsConfiguration("codexVoice.whisperBinaryPath")
-          || event.affectsConfiguration("codexVoice.ffmpegPath")
+          event.affectsConfiguration("vibePrompt.modelPath")
+          || event.affectsConfiguration("vibePrompt.whisperBinaryPath")
+          || event.affectsConfiguration("vibePrompt.ffmpegPath")
         ) {
           void this.refreshSetupState(true);
         }
@@ -99,10 +99,10 @@ class VoiceController implements vscode.Disposable {
     if (!this.session.canStart) return;
     const generation = ++this.generation;
     this.setPhase("starting");
-    await vscode.commands.executeCommand("setContext", "codexVoice.recording", true);
+    await vscode.commands.executeCommand("setContext", "vibePrompt.recording", true);
     if (generation !== this.generation || this.session.phase !== "starting") return;
 
-    const configuration = vscode.workspace.getConfiguration("codexVoice");
+    const configuration = vscode.workspace.getConfiguration("vibePrompt");
     const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
     const ffmpegStatus = await this.ffmpegManager.check(ffmpegPath, true);
     if (generation !== this.generation || this.session.phase !== "starting") return;
@@ -111,7 +111,7 @@ class VoiceController implements vscode.Disposable {
       if (generation !== this.generation || this.session.phase !== "starting") return;
       this.setPhase("error");
       this.view.update({ setupError: ffmpegStatus.message });
-      await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+      await vscode.commands.executeCommand("setContext", "vibePrompt.recording", false);
       await this.reveal();
       return;
     }
@@ -125,7 +125,7 @@ class VoiceController implements vscode.Disposable {
       await this.refreshSetupState(true);
       if (generation !== this.generation || this.session.phase !== "starting") return;
       this.setPhase("error", { error: message });
-      await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+      await vscode.commands.executeCommand("setContext", "vibePrompt.recording", false);
       await this.reveal();
       return;
     }
@@ -164,7 +164,7 @@ class VoiceController implements vscode.Disposable {
 
     try {
       await this.recorder.stop();
-      await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+      await vscode.commands.executeCommand("setContext", "vibePrompt.recording", false);
       if (generation !== this.generation || this.session.phase !== "stopping") return;
       this.setPhase("transcribing");
       const audio = Buffer.concat(this.chunks);
@@ -174,7 +174,7 @@ class VoiceController implements vscode.Disposable {
       this.setPhase("ready", { transcript, elapsedMs: 0, error: undefined });
       if (transcript) {
         await vscode.env.clipboard.writeText(transcript);
-        void vscode.window.setStatusBarMessage("Codex Voice: transcript copied", 3_000);
+        void vscode.window.setStatusBarMessage("Vibe Prompt: transcript copied", 3_000);
       }
     } catch (error) {
       if (generation === this.generation && this.session.phase !== "cancelling") {
@@ -192,7 +192,7 @@ class VoiceController implements vscode.Disposable {
     await this.recorder.cancel();
     this.chunks = [];
     this.previewText = "";
-    await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+    await vscode.commands.executeCommand("setContext", "vibePrompt.recording", false);
     this.setPhase("ready", { transcript: "", elapsedMs: 0, level: 0, error: undefined });
   }
 
@@ -201,7 +201,7 @@ class VoiceController implements vscode.Disposable {
       return;
     }
     await vscode.env.clipboard.writeText(this.view.transcript);
-    void vscode.window.setStatusBarMessage("Codex Voice: transcript copied", 2_000);
+    void vscode.window.setStatusBarMessage("Vibe Prompt: transcript copied", 2_000);
   }
 
   public clear(): void {
@@ -220,7 +220,7 @@ class VoiceController implements vscode.Disposable {
   private async selectAudioInput(): Promise<void> {
     if (this.session.isBusy) return;
     try {
-      const configuration = vscode.workspace.getConfiguration("codexVoice");
+      const configuration = vscode.workspace.getConfiguration("vibePrompt");
       const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
       const ffmpegStatus = await this.ffmpegManager.check(ffmpegPath, true);
       if (!ffmpegStatus.ready) throw new Error(ffmpegStatus.message);
@@ -229,7 +229,7 @@ class VoiceController implements vscode.Disposable {
         throw new Error("No microphone was found. Check operating-system microphone permissions and FFmpeg installation.");
       }
       if (process.platform === "linux") {
-        void vscode.window.showInformationMessage("Codex Voice uses the system default Linux audio input.");
+        void vscode.window.showInformationMessage("Vibe Prompt uses the system default Linux audio input.");
         return;
       }
       const current = configuration.get<string>("audioInput", "default");
@@ -237,15 +237,15 @@ class VoiceController implements vscode.Disposable {
       const selected = await vscode.window.showQuickPick(
         ordered.map((device) => ({ label: device.label, description: device.value, value: device.value })),
         {
-        placeHolder: "Select the microphone used by Codex Voice",
-        title: "Codex Voice: Audio Input",
+        placeHolder: "Select the microphone used by Vibe Prompt",
+        title: "Vibe Prompt: Audio Input",
         },
       );
       if (!selected) return;
       await vscode.workspace
-        .getConfiguration("codexVoice")
+        .getConfiguration("vibePrompt")
         .update("audioInput", selected.value, vscode.ConfigurationTarget.Global);
-      void vscode.window.showInformationMessage(`Codex Voice will use: ${selected.label}`);
+      void vscode.window.showInformationMessage(`Vibe Prompt will use: ${selected.label}`);
     } catch (error) {
       void vscode.window.showErrorMessage(messageFrom(error));
     }
@@ -261,7 +261,7 @@ class VoiceController implements vscode.Disposable {
     try {
       const modelPath = await this.modelManager.select(modelId);
       await vscode.workspace
-        .getConfiguration("codexVoice")
+        .getConfiguration("vibePrompt")
         .update("modelPath", modelPath, vscode.ConfigurationTarget.Global);
       await this.refreshSetupState();
     } catch (error) {
@@ -273,7 +273,7 @@ class VoiceController implements vscode.Disposable {
     if (this.modelDownloadRunning) return;
     const model = WHISPER_MODELS.find((candidate) => candidate.id === modelId);
     if (!model) return;
-    const activePath = vscode.workspace.getConfiguration("codexVoice").get<string>("modelPath", "");
+    const activePath = vscode.workspace.getConfiguration("vibePrompt").get<string>("modelPath", "");
     const installedModels = await this.modelManager.list(activePath);
     if (installedModels.find((candidate) => candidate.id === modelId)?.active) {
       this.view.update({ setupError: "Switch to another model before removing the active model." });
@@ -325,7 +325,7 @@ class VoiceController implements vscode.Disposable {
       });
       if (generation !== this.modelDownloadGeneration) return;
       await vscode.workspace
-        .getConfiguration("codexVoice")
+        .getConfiguration("vibePrompt")
         .update("modelPath", modelPath, vscode.ConfigurationTarget.Global);
       this.view.update({
         downloadingModelId: undefined,
@@ -333,7 +333,7 @@ class VoiceController implements vscode.Disposable {
         setupError: undefined,
       });
       await this.refreshSetupState();
-      void vscode.window.showInformationMessage("Codex Voice model is ready.");
+      void vscode.window.showInformationMessage("Vibe Prompt model is ready.");
     } catch (error) {
       if (generation === this.modelDownloadGeneration) {
         this.view.update({
@@ -363,7 +363,7 @@ class VoiceController implements vscode.Disposable {
 
   private async installRuntime(): Promise<void> {
     if (this.modelDownloadRunning || !this.runtimeManager.supportsAutomaticInstall) {
-      await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:sobansheikh.codex-voice");
+      await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:sobansheikh.vibe-prompt");
       return;
     }
     this.modelDownloadRunning = true;
@@ -380,11 +380,11 @@ class VoiceController implements vscode.Disposable {
       });
       if (generation !== this.modelDownloadGeneration) return;
       await vscode.workspace
-        .getConfiguration("codexVoice")
+        .getConfiguration("vibePrompt")
         .update("whisperBinaryPath", binaryPath, vscode.ConfigurationTarget.Global);
       this.view.update({ installingRuntime: false, runtimeProgress: undefined, setupError: undefined });
       await this.refreshSetupState();
-      void vscode.window.showInformationMessage("Codex Voice runtime is ready.");
+      void vscode.window.showInformationMessage("Vibe Prompt runtime is ready.");
     } catch (error) {
       if (generation === this.modelDownloadGeneration) {
         this.view.update({ installingRuntime: false, runtimeProgress: undefined, setupError: messageFrom(error) });
@@ -395,7 +395,7 @@ class VoiceController implements vscode.Disposable {
   }
 
   private async refreshSetupState(reportMissing = false, forceFfmpeg = false): Promise<void> {
-    const configuration = vscode.workspace.getConfiguration("codexVoice");
+    const configuration = vscode.workspace.getConfiguration("vibePrompt");
     const modelPath = configuration.get<string>("modelPath", "").trim();
     const ffmpegPath = configuration.get<string>("ffmpegPath", "ffmpeg");
     const modelAvailable = modelPath ? await fileExists(modelPath) : false;
@@ -458,7 +458,7 @@ class VoiceController implements vscode.Disposable {
   }
 
   private startTimers(): void {
-    const interval = vscode.workspace.getConfiguration("codexVoice").get<number>("previewIntervalMs", 3_500);
+    const interval = vscode.workspace.getConfiguration("vibePrompt").get<number>("previewIntervalMs", 3_500);
     this.previewTimer = setInterval(() => void this.updatePreview(), interval);
     this.clockTimer = setInterval(() => {
       this.view.update({ elapsedMs: Date.now() - this.startedAt });
@@ -503,7 +503,7 @@ class VoiceController implements vscode.Disposable {
     this.stopTimers();
     this.transcriber.cancelAll();
     await this.recorder.cancel();
-    await vscode.commands.executeCommand("setContext", "codexVoice.recording", false);
+    await vscode.commands.executeCommand("setContext", "vibePrompt.recording", false);
     this.setPhase("error", { level: 0, error: messageFrom(error) });
     await this.reveal();
   }
@@ -517,7 +517,7 @@ class VoiceController implements vscode.Disposable {
   }
 
   private async reveal(): Promise<void> {
-    await vscode.commands.executeCommand("workbench.view.extension.codexVoicePanel");
+    await vscode.commands.executeCommand("workbench.view.extension.vibePromptPanel");
     await vscode.commands.executeCommand(`${TranscriptViewProvider.viewType}.focus`);
   }
 }

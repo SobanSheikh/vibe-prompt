@@ -16,7 +16,7 @@ export class WhisperTranscriber implements vscode.Disposable {
   public async validate(): Promise<void> {
     const { binaryPath, modelPath } = this.configuration();
     if (!modelPath) {
-      throw new Error("Set Codex Voice: Whisper Model Path before recording.");
+      throw new Error("Set Vibe Prompt: Whisper Model Path before recording.");
     }
     await access(modelPath).catch(() => {
       throw new Error(`Whisper model not found: ${modelPath}`);
@@ -81,7 +81,7 @@ export class WhisperTranscriber implements vscode.Disposable {
     modelPath: string;
     language: string;
   } {
-    const configuration = vscode.workspace.getConfiguration("codexVoice");
+    const configuration = vscode.workspace.getConfiguration("vibePrompt");
     return {
       binaryPath: configuration.get<string>("whisperBinaryPath", "whisper-cli"),
       modelPath: configuration.get<string>("modelPath", ""),

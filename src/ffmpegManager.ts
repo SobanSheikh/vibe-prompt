@@ -44,7 +44,7 @@ export class FfmpegManager {
       return {
         ready: false,
         message: detail.includes("ENOENT")
-          ? "FFmpeg was not found. Install it or configure Codex Voice: FFmpeg Path."
+          ? "FFmpeg was not found. Install it or configure Vibe Prompt: FFmpeg Path."
           : `FFmpeg check failed: ${detail}`,
       };
     }
@@ -71,7 +71,7 @@ export function evaluateFfmpeg(
     return { ready: false, message: "This operating system is not supported by the current desktop release." };
   }
 
-  const backendPattern = new RegExp(`^\\s*D\\s+${backend}\\s`, "m");
+  const backendPattern = new RegExp(`^\\s*D\\S?\\s+${backend}\\s`, "m");
   if (deviceResult.code !== 0 || !backendPattern.test(deviceResult.output)) {
     return {
       ready: false,

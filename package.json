@@ -1,24 +1,31 @@
 {
-  "name": "codex-voice",
-  "displayName": "Codex Voice",
-  "description": "Local streaming voice dictation alongside Codex in VS Code.",
+  "name": "vibe-prompt",
+  "displayName": "Vibe Prompt",
+  "description": "Private, local voice-to-text for prompts and code in VS Code.",
   "version": "0.9.0",
   "publisher": "sobansheikh",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/SobanSheikh/codex_voice.git"
+  },
+  "homepage": "https://github.com/SobanSheikh/codex_voice#readme",
+  "bugs": {
+    "url": "https://github.com/SobanSheikh/codex_voice/issues"
   },
   "files": [
     "out/**",
     "media/**",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
+    "Machine Learning",
     "Other"
   ],
   "keywords": [
@@ -33,104 +40,104 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "onView:codexVoice.transcript",
-    "onCommand:codexVoice.toggleRecording"
+    "onView:vibePrompt.transcript",
+    "onCommand:vibePrompt.toggleRecording"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "codexVoice.toggleRecording",
-        "title": "Codex Voice: Start or Stop Recording",
+        "command": "vibePrompt.toggleRecording",
+        "title": "Vibe Prompt: Start or Stop Recording",
         "icon": "$(mic)"
       },
       {
-        "command": "codexVoice.startRecording",
-        "title": "Codex Voice: Start Recording"
+        "command": "vibePrompt.startRecording",
+        "title": "Vibe Prompt: Start Recording"
       },
       {
-        "command": "codexVoice.stopRecording",
-        "title": "Codex Voice: Stop and Transcribe"
+        "command": "vibePrompt.stopRecording",
+        "title": "Vibe Prompt: Stop and Transcribe"
       },
       {
-        "command": "codexVoice.cancelRecording",
-        "title": "Codex Voice: Cancel Recording"
+        "command": "vibePrompt.cancelRecording",
+        "title": "Vibe Prompt: Cancel Recording"
       },
       {
-        "command": "codexVoice.copyTranscript",
-        "title": "Codex Voice: Copy Transcript"
+        "command": "vibePrompt.copyTranscript",
+        "title": "Vibe Prompt: Copy Transcript"
       },
       {
-        "command": "codexVoice.clearTranscript",
-        "title": "Codex Voice: Clear Transcript"
+        "command": "vibePrompt.clearTranscript",
+        "title": "Vibe Prompt: Clear Transcript"
       },
       {
-        "command": "codexVoice.openTranscript",
-        "title": "Codex Voice: Open Transcript"
+        "command": "vibePrompt.openTranscript",
+        "title": "Vibe Prompt: Open Transcript"
       },
       {
-        "command": "codexVoice.selectAudioInput",
-        "title": "Codex Voice: Select Microphone"
+        "command": "vibePrompt.selectAudioInput",
+        "title": "Vibe Prompt: Select Microphone"
       }
     ],
     "keybindings": [
       {
-        "command": "codexVoice.toggleRecording",
+        "command": "vibePrompt.toggleRecording",
         "key": "ctrl+alt+space",
         "mac": "cmd+alt+space"
       },
       {
-        "command": "codexVoice.cancelRecording",
+        "command": "vibePrompt.cancelRecording",
         "key": "escape",
-        "when": "codexVoice.recording"
+        "when": "vibePrompt.recording"
       }
     ],
     "viewsContainers": {
       "panel": [
         {
-          "id": "codexVoicePanel",
-          "title": "Codex Voice",
-          "icon": "media/microphone.svg"
+          "id": "vibePromptPanel",
+          "title": "Vibe Prompt",
+          "icon": "media/panel-icon.svg"
         }
       ]
     },
     "views": {
-      "codexVoicePanel": [
+      "vibePromptPanel": [
         {
           "type": "webview",
-          "id": "codexVoice.transcript",
+          "id": "vibePrompt.transcript",
           "name": "Live Transcript"
         }
       ]
     },
     "configuration": {
-      "title": "Codex Voice",
+      "title": "Vibe Prompt",
       "properties": {
-        "codexVoice.whisperBinaryPath": {
+        "vibePrompt.whisperBinaryPath": {
           "type": "string",
           "default": "whisper-cli",
           "description": "Path to the whisper.cpp command-line executable."
         },
-        "codexVoice.modelPath": {
+        "vibePrompt.modelPath": {
           "type": "string",
           "default": "",
           "description": "Absolute path to a local whisper.cpp GGML model file."
         },
-        "codexVoice.language": {
+        "vibePrompt.language": {
           "type": "string",
           "default": "en",
           "description": "Language code passed to whisper.cpp, or 'auto' for detection."
         },
-        "codexVoice.audioInput": {
+        "vibePrompt.audioInput": {
           "type": "string",
           "default": "default",
-          "description": "FFmpeg audio input device. Use 'default' for automatic selection, or choose a device from the Codex Voice panel."
+          "description": "FFmpeg audio input device. Use 'default' for automatic selection, or choose a device from the Vibe Prompt panel."
         },
-        "codexVoice.ffmpegPath": {
+        "vibePrompt.ffmpegPath": {
           "type": "string",
           "default": "ffmpeg",
           "description": "Path to the FFmpeg executable."
         },
-        "codexVoice.previewIntervalMs": {
+        "vibePrompt.previewIntervalMs": {
           "type": "number",
           "default": 3500,
           "minimum": 2000,

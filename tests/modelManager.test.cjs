@@ -6,7 +6,7 @@ const path = require("node:path");
 const { ModelManager, WHISPER_MODELS } = require("../out/modelManager");
 
 async function withManager(run) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "codex-voice-model-test-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "vibe-prompt-model-test-"));
   const manager = new ModelManager({ fsPath: root });
   try {
     await run(manager, root);

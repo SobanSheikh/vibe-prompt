@@ -6,7 +6,7 @@ test("accepts Linux FFmpeg with a PulseAudio input device", () => {
   const status = evaluateFfmpeg(
     "linux",
     { code: 0, output: "ffmpeg version 7.1 Copyright" },
-    { code: 0, output: " D  pulse           Pulse audio input" },
+    { code: 0, output: " DE pulse           Pulse audio input/output" },
   );
   assert.deepEqual(status, { ready: true, message: "FFmpeg 7.1", version: "7.1" });
 });
