@@ -178,20 +178,22 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     .model-picker { position: relative; flex: 0 0 172px; }
     .model-picker-trigger { width: 100%; justify-content: flex-start; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border-color: var(--vscode-dropdown-border); }
     .model-picker-trigger:hover { background: var(--vscode-list-hoverBackground); }
-    .model-picker-trigger[aria-expanded="true"] { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    .model-picker-trigger[aria-expanded="true"] { border-color: #f54287; outline: 1px solid #f54287; outline-offset: -1px; }
     .model-picker-trigger .model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .model-picker-trigger .chevron { margin-left: auto; transition: transform 120ms ease; }
     .model-picker-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
-    .model-menu { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; width: max(240px, 100%); max-width: min(320px, calc(100vw - 24px)); padding: 4px; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); box-shadow: 0 4px 14px rgba(0, 0, 0, .28); }
+    .model-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; width: max(240px, 100%); max-width: min(320px, calc(100vw - 24px)); padding: 4px; border: 1px solid color-mix(in srgb, #f54287 55%, var(--vscode-menu-border, var(--vscode-widget-border))); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); box-shadow: 0 6px 18px rgba(0, 0, 0, .34); }
     .model-menu[hidden] { display: none; }
     .model-option { width: 100%; height: auto; min-height: 42px; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; padding: 6px 8px; border: 0; text-align: left; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: transparent; }
     .model-option:hover, .model-option:focus-visible { outline: none; color: var(--vscode-list-hoverForeground); background: var(--vscode-list-hoverBackground); }
-    .model-option.active { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+    .model-option.active { color: var(--vscode-foreground); background: color-mix(in srgb, #f54287 22%, var(--vscode-menu-background, var(--vscode-dropdown-background))); box-shadow: inset 2px 0 #f54287; }
     .model-option .check { grid-row: 1 / 3; align-self: center; visibility: hidden; }
-    .model-option.active .check { visibility: visible; }
+    .model-option.active .check { visibility: visible; color: #f54287; }
     .model-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
     .model-option-meta { color: var(--vscode-descriptionForeground); font-size: 11px; }
     .model-option.active .model-option-meta { color: inherit; opacity: .8; }
+    .tooltip { position: fixed; z-index: 1000; max-width: min(260px, calc(100vw - 16px)); padding: 5px 8px; border: 1px solid color-mix(in srgb, #f54287 55%, var(--vscode-widget-border)); border-radius: 3px; color: var(--vscode-foreground); background: var(--vscode-editorHoverWidget-background, var(--vscode-menu-background)); box-shadow: 0 4px 14px rgba(0, 0, 0, .32); font-size: 12px; line-height: 1.35; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity 80ms ease, transform 80ms ease; }
+    .tooltip.visible { opacity: 1; transform: translateY(0); }
     @media (max-width: 760px) {
       .toolbar { flex-wrap: wrap; }
       .status { min-width: 0; }
@@ -208,27 +210,27 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <section id="setup" class="setup">
-    <div class="setup-header"><h2 id="setupTitle">Set up local transcription</h2><button id="closeModelManager">Done</button></div>
+    <div class="setup-header"><h2 id="setupTitle">Set up local transcription</h2><button id="closeModelManager" title="Close model manager">Done</button></div>
     <p id="setupCopy" class="setup-copy">Complete the local dependencies and choose a Whisper model. Downloads are verified before use.</p>
     <p id="platformSetupCopy" class="setup-copy">${platformSetupCopy}</p>
     <div id="ffmpegSetup" class="model setup-dependency">
       <div class="model-head"><span>FFmpeg</span><span>System dependency</span></div>
       <p id="ffmpegDescription">Checking FFmpeg...</p>
-      <div class="dependency-actions"><button id="checkFfmpeg" class="primary">Check again</button><button id="openFfmpegHelp">Installation guide</button></div>
+      <div class="dependency-actions"><button id="checkFfmpeg" class="primary" title="Check FFmpeg again">Check again</button><button id="openFfmpegHelp" title="Open the FFmpeg installation guide">Installation guide</button></div>
     </div>
     <div id="runtimeSetup" class="model setup-dependency">
       <div class="model-head"><span>Whisper runtime</span><span>Local</span></div>
       <p id="runtimeDescription">Runs speech recognition locally</p>
-      <button id="installRuntime" class="primary">Install runtime</button>
-      <div id="runtimeDownload" class="download"><progress id="runtimeProgress" max="100" value="0"></progress><span id="runtimeProgressText"></span><button id="cancelRuntimeDownload">Cancel</button></div>
+      <button id="installRuntime" class="primary" title="Install the local Whisper runtime">Install runtime</button>
+      <div id="runtimeDownload" class="download"><progress id="runtimeProgress" max="100" value="0"></progress><span id="runtimeProgressText"></span><button id="cancelRuntimeDownload" title="Cancel runtime download">Cancel</button></div>
     </div>
     <div id="modelSetup">
       <p class="setup-copy">Choose a transcription model:</p>
       <div id="models" class="models"></div>
     </div>
-    <div id="download" class="download"><progress id="progress" max="100" value="0"></progress><span id="progressText"></span><button id="cancelDownload">Cancel</button></div>
+    <div id="download" class="download"><progress id="progress" max="100" value="0"></progress><span id="progressText"></span><button id="cancelDownload" title="Cancel model download">Cancel</button></div>
     <div id="setupError" class="setup-error" hidden></div>
-    <div class="setup-footer">English-only models provide the best size and speed for English dictation. <button id="advancedSettings" class="settings">Advanced settings</button></div>
+    <div class="setup-footer">English-only models provide the best size and speed for English dictation. <button id="advancedSettings" class="settings" title="Open advanced Vibe Prompt settings">Advanced settings</button></div>
   </section>
   <div id="workspace">
   <div class="draft-header">
@@ -263,9 +265,52 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     </div>
   </div>
   </div>
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const send = action => vscode.postMessage({ action });
+    document.querySelectorAll('button[title]').forEach(button => {
+      button.dataset.tooltip = button.title;
+      button.removeAttribute('title');
+    });
+    const tooltip = document.getElementById('tooltip');
+    let tooltipTarget;
+    let tooltipTimer;
+    const hideTooltip = () => {
+      clearTimeout(tooltipTimer);
+      tooltip.classList.remove('visible');
+      tooltip.hidden = true;
+      tooltipTarget?.removeAttribute('aria-describedby');
+      tooltipTarget = undefined;
+    };
+    const showTooltip = target => {
+      if (!target?.dataset.tooltip || target === tooltipTarget) return;
+      hideTooltip();
+      tooltipTarget = target;
+      tooltipTimer = setTimeout(() => {
+        if (tooltipTarget !== target) return;
+        tooltip.textContent = target.dataset.tooltip;
+        tooltip.hidden = false;
+        tooltip.classList.add('visible');
+        target.setAttribute('aria-describedby', 'tooltip');
+        const targetRect = target.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const gap = 7;
+        const left = Math.min(window.innerWidth - tooltipRect.width - 8, Math.max(8, targetRect.left + (targetRect.width - tooltipRect.width) / 2));
+        let top = targetRect.top - tooltipRect.height - gap;
+        if (top < 8) top = targetRect.bottom + gap;
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+      }, 250);
+    };
+    document.addEventListener('pointerover', event => showTooltip(event.target.closest?.('button[data-tooltip]')));
+    document.addEventListener('pointerout', event => {
+      if (!event.relatedTarget || !tooltipTarget?.contains(event.relatedTarget)) hideTooltip();
+    });
+    document.addEventListener('focusin', event => showTooltip(event.target.closest?.('button[data-tooltip]')));
+    document.addEventListener('focusout', hideTooltip);
+    document.addEventListener('scroll', hideTooltip, true);
+    window.addEventListener('resize', hideTooltip);
     for (const action of ['start', 'stop', 'cancel', 'copy', 'clear', 'settings']) {
       document.getElementById(action).addEventListener('click', () => send(action));
     }
@@ -369,6 +414,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
         const button = document.createElement('button');
         button.className = model.recommended && !model.installed ? 'primary' : '';
         button.textContent = state.downloadingModelId === model.id ? 'Downloading...' : model.active ? 'Active' : model.installed ? 'Use model' : 'Download & use';
+        button.dataset.tooltip = model.active ? model.name + ' is active' : model.installed ? 'Switch to ' + model.name : 'Download and use ' + model.name;
         button.disabled = model.active || Boolean(state.downloadingModelId) || Boolean(state.installingRuntime);
         button.addEventListener('click', () => vscode.postMessage({ action: model.installed ? 'switchModel' : 'downloadModel', modelId: model.id }));
         actions.appendChild(button);
@@ -376,6 +422,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
           const remove = document.createElement('button');
           remove.className = 'remove';
           remove.textContent = 'Remove';
+          remove.dataset.tooltip = 'Remove ' + model.name;
           remove.disabled = Boolean(state.downloadingModelId) || Boolean(state.installingRuntime);
           remove.addEventListener('click', () => vscode.postMessage({ action: 'removeModel', modelId: model.id }));
           actions.appendChild(remove);
@@ -392,6 +439,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
         option.className = 'model-option' + (model.active ? ' active' : '');
         option.setAttribute('role', 'option');
         option.setAttribute('aria-selected', String(model.active));
+        option.dataset.tooltip = model.active ? model.name + ' is active' : 'Switch to ' + model.name;
         const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         check.setAttribute('class', 'check');
         check.setAttribute('viewBox', '0 0 24 24');
