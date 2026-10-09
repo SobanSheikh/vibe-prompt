@@ -148,7 +148,7 @@ export class TranscriptViewProvider implements vscode.WebviewViewProvider {
     button.icon-button { width: 30px; justify-content: center; padding: 0; }
     svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .transcript { width: 100%; min-height: 118px; max-height: 34vh; margin: 0 0 10px; padding: 11px 13px; resize: vertical; overflow: auto; line-height: 1.55; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; outline: none; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; }
-    .transcript:focus { border-color: var(--vscode-focusBorder); }
+    .transcript:focus { border-color: #f54287; }
     .transcript::placeholder { color: var(--vscode-input-placeholderForeground); }
     .transcript:read-only { cursor: default; }
     .error { margin-top: 8px; color: var(--vscode-errorForeground); white-space: pre-wrap; }
