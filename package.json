@@ -8,11 +8,11 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SobanSheikh/codex_voice.git"
+    "url": "https://github.com/SobanSheikh/vibe-prompt.git"
   },
-  "homepage": "https://github.com/SobanSheikh/codex_voice#readme",
+  "homepage": "https://github.com/SobanSheikh/vibe-prompt#readme",
   "bugs": {
-    "url": "https://github.com/SobanSheikh/codex_voice/issues"
+    "url": "https://github.com/SobanSheikh/vibe-prompt/issues"
   },
   "files": [
     "out/**",
